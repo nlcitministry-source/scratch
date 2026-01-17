@@ -13,27 +13,24 @@ export class ErrorBoundary extends React.Component {
     componentDidCatch(error, errorInfo) {
         console.error("Uncaught error:", error, errorInfo);
         this.setState({ error, errorInfo });
+
+        // Auto-refresh logic (prevent infinite loop)
+        const lastCrash = sessionStorage.getItem('last_crash_timestamp');
+        const now = Date.now();
+
+        // If last crash was more than 10 seconds ago, safe to auto-reload
+        if (!lastCrash || (now - parseInt(lastCrash)) > 10000) {
+            sessionStorage.setItem('last_crash_timestamp', now.toString());
+            console.log("Auto-refreshing due to error...");
+            window.location.reload();
+        }
     }
 
     render() {
         if (this.state.hasError) {
-            return (
-                <div style={{ padding: '20px', color: 'red', background: '#ffe6e6', height: '100vh', overflow: 'auto' }}>
-                    <h1>⚠️ Something went wrong.</h1>
-                    <button
-                        onClick={() => window.location.reload()}
-                        style={{ padding: '10px 20px', fontSize: '1.2rem', marginBottom: '20px', cursor: 'pointer' }}
-                    >
-                        Refresh Page
-                    </button>
-                    <details style={{ whiteSpace: 'pre-wrap' }}>
-                        <summary>Error Details</summary>
-                        {this.state.error && this.state.error.toString()}
-                        <br />
-                        {this.state.errorInfo && this.state.errorInfo.componentStack}
-                    </details>
-                </div>
-            );
+            // User requested no error screen, just silent recovery.
+            // The componentDidCatch will handle the reload.
+            return <div style={{ width: '100vw', height: '100vh', background: '#87CEEB' }}></div>;
         }
 
         return this.props.children;

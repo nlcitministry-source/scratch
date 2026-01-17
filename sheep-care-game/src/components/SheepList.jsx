@@ -2,6 +2,7 @@
 import React from 'react';
 import { useGame } from '../context/GameContext';
 import { SheepVisual } from './SheepVisual';
+import { getSheepMessage, getStableSheepMessage } from '../utils/gameLogic';
 
 export const SheepList = ({ onSelect, onClose }) => {
     const { sheep } = useGame();
@@ -52,6 +53,16 @@ export const SheepList = ({ onSelect, onClose }) => {
                                             {isDead ? '已離世 (需復活)' : (isSick ? '生病中' : '健康')}
                                             {!isDead && ` | HP: ${Math.round(s.health)}%`}
                                         </div>
+                                        {/* Message Preview */}
+                                        {!isDead && (
+                                            <div style={{
+                                                marginTop: '5px', background: '#f0f0f0', padding: '5px 10px',
+                                                borderRadius: '10px', fontSize: '0.85rem', color: '#555',
+                                                display: 'inline-block', fontStyle: 'italic'
+                                            }}>
+                                                💬 {s.message || getStableSheepMessage(s, isSick || s.health < 30 ? 'critical' : (s.health < 60 ? 'neglected' : 'happy'))}
+                                            </div>
+                                        )}
                                     </div>
 
                                     <button

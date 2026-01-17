@@ -1,6 +1,7 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { SHEEP_TYPES } from '../data/sheepData';
+import { sanitizeSheep, calculateTick, generateVisuals, getSheepMessage } from '../utils/gameLogic';
 
 const GameContext = createContext();
 
@@ -41,49 +42,6 @@ export const GameProvider = ({ children }) => {
         return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
     };
 
-    const generateVisuals = () => {
-        const colors = ['#ffffff', '#fff5e6', '#f0f8ff', '#fff0f5', '#e6e6fa', '#f5f5f5'];
-        const accessories = ['none', 'none', 'none', 'tie_red', 'tie_blue', 'flower', 'scarf_green'];
-        const color = colors[Math.floor(Math.random() * colors.length)];
-        const accessory = accessories[Math.floor(Math.random() * accessories.length)];
-        return { color, accessory };
-    };
-
-    // --- Emotional Blackmail Messages ---
-    const GUILT_MESSAGES = {
-        login: [
-            "喲，大忙人終於想起這裡還有羊了？",
-            "你要是再晚點來，我就去隔壁牧場了。",
-            "我差點以為這是一個無人島。",
-            "你還記得我長什麼樣子嗎？",
-            "沒關係，我已經習慣等待了..."
-        ],
-        neglected: [
-            "你的良心不會痛嗎？",
-            "我很餓，但我不說。",
-            "隔壁的牧羊人好像比較溫柔...",
-            "反正我不重要... 🍂",
-            "去忙吧，不用管我死活。",
-            "希望你玩得開心... 即使我在受苦。",
-            "我的肚子在唱歌，你聽到了嗎？"
-        ],
-        critical: [
-            "我看見天堂的阿嬤了...",
-            "再見了，無情的世界。",
-            "若有來世，我想當隻石頭...",
-            "救... 救命...",
-            "這就是終點了嗎？"
-        ],
-        happy: [
-            "最喜歡你了！ ❤️",
-            "今天天氣真好～ ☀️",
-            "咩～ (開心)",
-            "你真是個好牧羊人！",
-            "又是美好的一天！"
-        ]
-    };
-    const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
-
     // --- Actions ---
     const sendVerificationEntry = async (email) => {
         try {
@@ -110,25 +68,22 @@ export const GameProvider = ({ children }) => {
         const now = Date.now();
         const lastSave = loadedData.lastSave || now;
         const diffHours = (now - lastSave) / (1000 * 60 * 60);
-        const decayAmount = (diffHours / 24) * 80;
+        // User requested max 20% drop per day (24 hours)
+        const decayAmount = (diffHours / 24) * 20;
 
-        // Robust filtering: Exist AND have Type AND Type is valid
+        // Robust filtering & Logic
         const decaySheep = (loadedData.sheep || [])
             .filter(s => s && s.type && SHEEP_TYPES[s.type])
             .map(s => {
                 if (s.status === 'dead') return s;
-
+                // Decay
                 const newHealth = Math.max(0, s.health - decayAmount);
                 let newStatus = s.status;
+                if (newHealth <= 0) newStatus = 'dead';
+                else if (newHealth < 50 && s.status === 'healthy' && Math.random() < 0.5) newStatus = 'sick';
 
-                if (newHealth <= 0) {
-                    newStatus = 'dead';
-                } else if (newHealth < 50 && s.status === 'healthy') {
-                    if (Math.random() < 0.5) newStatus = 'sick';
-                }
-                // Ensure visual exists
-                const safeVisual = s.visual || generateVisuals();
-                return { ...s, health: newHealth, status: newStatus, visual: safeVisual };
+                // Sanitize & Return
+                return sanitizeSheep({ ...s, health: newHealth, status: newStatus });
             });
 
         setSheep(decaySheep);
@@ -161,9 +116,9 @@ export const GameProvider = ({ children }) => {
                 const loaded = result.data;
                 if (loaded && loaded.sheep) {
                     const diff = applyLoadedData(loaded, name);
-                    // Guilt Trip on Login
+                    // Welcome Message on Login
                     if (diff > 12) {
-                        showMessage(`💔 ${getRandomItem(GUILT_MESSAGES.login)} (離開 ${Math.round(diff)} 小時)`);
+                        showMessage(`✨ ${getSheepMessage('login')} (離開 ${Math.round(diff)} 小時)`);
                     } else if (diff > 1) {
                         showMessage(`您離開了 ${Math.round(diff)} 小時，羊群狀態更新了...`);
                     } else {
@@ -172,6 +127,12 @@ export const GameProvider = ({ children }) => {
                 } else {
                     setSheep([]); setInventory([]);
                 }
+
+                // Force reload to ensure clean UI state as requested
+                setTimeout(() => {
+                    window.location.reload();
+                }, 500);
+
                 return { status: 'success' };
             } else {
                 showMessage(`❌ ${result.message}`);
@@ -185,6 +146,8 @@ export const GameProvider = ({ children }) => {
         setCurrentUser(null);
         localStorage.removeItem('sheep_current_session');
         setSheep([]); setInventory([]);
+        // Force reload on logout too for safety
+        window.location.reload();
     };
 
     const saveToCloud = async () => {
@@ -228,63 +191,13 @@ export const GameProvider = ({ children }) => {
     useEffect(() => {
         if (!currentUser) return;
 
-        const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
-
         const tick = setInterval(() => {
             setSheep(prev => prev.filter(s => s).map(s => {
-                if (s.status === 'dead') return s;
-
-                let { x, y, state, angle, direction, message, messageTimer } = s;
-
-                // 1. Movement Logic
-                if (state === 'walking') {
-                    if (Math.random() < 0.05) state = 'idle';
-                    else {
-                        y = y ?? Math.random() * 50;
-                        angle = angle ?? Math.random() * Math.PI * 2;
-
-                        // Smooth random turn
-                        angle += (Math.random() - 0.5) * 0.5;
-                        x += Math.cos(angle) * 1.5;
-                        y += Math.sin(angle);
-
-                        // Bounce off walls
-                        if (x < 5 || x > 95) { angle = Math.PI - angle; x = clamp(x, 5, 95); }
-                        if (y < 0 || y > 100) { angle = -angle; y = clamp(y, 0, 100); }
-                    }
-                } else {
-                    if (Math.random() < 0.05) state = 'walking';
-                }
-                direction = Math.cos(angle) > 0 ? 1 : -1;
-
-                // 2. Health & Status Logic
-                const decayRate = s.status === 'sick' ? 0.2 : (s.status === 'injured' ? 0.1 : 0.02);
-                const newHealth = Math.max(0, s.health - decayRate);
-                let newStatus = s.status;
-
-                if (newHealth <= 0) {
-                    newStatus = 'dead';
+                const updated = calculateTick(s);
+                if (updated.status === 'dead' && s.status !== 'dead') {
                     showMessage(`🕊️ ${s.name} 不幸離世了...`);
-                } else if (newHealth < 50 && s.status === 'healthy' && Math.random() < 0.005) {
-                    newStatus = 'sick';
                 }
-
-                // 3. Message Logic
-                let timer = messageTimer > 0 ? messageTimer - 0.1 : 0;
-                let msg = timer > 0 ? message : null;
-
-                if (timer <= 0 && Math.random() < 0.003) {
-                    timer = 5;
-                    if (newHealth < 30) msg = getRandomItem(GUILT_MESSAGES.critical);
-                    else if (newHealth < 60) msg = getRandomItem(GUILT_MESSAGES.neglected);
-                    else if (Math.random() < 0.3) msg = getRandomItem(GUILT_MESSAGES.happy);
-                }
-
-                return {
-                    ...s, x, y, angle, state, direction,
-                    health: newHealth, status: newStatus,
-                    message: msg, messageTimer: timer
-                };
+                return updated;
             }));
         }, 100);
         return () => clearInterval(tick);
