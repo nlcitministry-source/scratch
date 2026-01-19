@@ -7,8 +7,14 @@ const GameContext = createContext();
 
 export const useGame = () => useContext(GameContext);
 
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+const supabaseKey = import.meta.env.VITE_SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
+
 export const GameProvider = ({ children }) => {
-    const API_URL = import.meta.env.VITE_API_URL;
+    // const API_URL = import.meta.env.VITE_API_URL; // Deprecated
     const LIFF_ID = "2008919632-15fCJTqb";
 
     // --- Session Init (SessionStorage for Auto-Logout on Close) ---
@@ -163,64 +169,48 @@ export const GameProvider = ({ children }) => {
 
         showMessage(`設定羊群中... (Hi, ${displayName})`);
 
-        // Sync with Cloud (Login/Register)
+        // Sync with Supabase (Login/Register)
         try {
-            if (!API_URL) {
-                alert("⚠️ Error: API_URL is missing! Please report this.");
-                console.error("API_URL is undefined");
-                setIsLoading(false);
-                return;
+            // Check if user exists
+            const { data: existingUser, error: fetchError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', userId)
+                .single();
+
+            if (fetchError && fetchError.code !== 'PGRST116') { // PGRST116 = JSON object requested, multiple (or no) results returned (No rows found)
+                throw fetchError;
             }
 
-            // Sync with Cloud (Login/Register)
-            // Add Timeout to prevent infinite loading
-            const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error('Request Timeout')), 10000)
-            );
+            if (existingUser) {
+                // Existing User
+                const loaded = existingUser.game_data || {};
+                const diff = applyLoadedData(loaded, userId);
 
-            const res = await Promise.race([
-                fetch(API_URL, {
-                    method: 'POST', body: JSON.stringify({
-                        action: 'line_login',
-                        lineId: userId,
-                        name: displayName,
-                        avatar: pictureUrl
-                    })
-                }),
-                timeoutPromise
-            ]);
-            const result = await res.json();
+                // Restore nickname from DB
+                if (existingUser.nickname) setNickname(existingUser.nickname);
+                else setNickname(null);
 
-            if (result.status === 'success') {
-                const loaded = result.data;
-                if (loaded && (loaded.sheep || loaded.inventory)) {
-                    // Existing User
-                    const diff = applyLoadedData(loaded, userId);
-                    if (diff > 12) showMessage(`✨ ${getSheepMessage('login')} (離開 ${Math.round(diff)} 小時)`);
-                    else if (diff > 1) showMessage(`您離開了 ${Math.round(diff)} 小時，羊群狀態更新了...`);
-                    else showMessage(`歡迎回來，${displayName}! 👋`);
-                } else {
-                    // New User or Empty Data
-                    if (result.isNew) showMessage("歡迎新加入的牧羊人！ 🎉");
-                    setSheep([]); setInventory([]);
-
-                    // If server has a nickname, use it. Otherwise keep it null (trigger setup)
-                    if (loaded && loaded.nickname) setNickname(loaded.nickname);
-                    else setNickname(null);
-                }
-
-                // Existing User Logic update for Nickname
-                if (loaded && loaded.nickname) {
-                    setNickname(loaded.nickname);
-                } else if (loaded && !loaded.nickname) {
-                    setNickname(null); // Ensure null if not set
-                }
-
+                if (diff > 12) showMessage(`✨ ${getSheepMessage('login')} (離開 ${Math.round(diff)} 小時)`);
+                else if (diff > 1) showMessage(`您離開了 ${Math.round(diff)} 小時，羊群狀態更新了...`);
+                else showMessage(`歡迎回來，${displayName}! 👋`);
             } else {
+                // New User - Insert
+                const { error: insertError } = await supabase
+                    .from('users')
+                    .insert([{
+                        id: userId,
+                        name: displayName,
+                        avatar: pictureUrl,
+                        nickname: null,
+                        game_data: {}
+                    }]);
 
-                console.error("Login Sync Failed:", result);
-                alert(`❌ Login Sync Failed: ${result.message}`);
-                showMessage(`❌ 登入資料同步失敗: ${result.message}`);
+                if (insertError) throw insertError;
+
+                showMessage("歡迎新加入的牧羊人！ 🎉");
+                setSheep([]); setInventory([]);
+                setNickname(null);
             }
         } catch (e) {
             alert(`⚠️ Connection Error: ${e.message}`);
@@ -298,28 +288,36 @@ export const GameProvider = ({ children }) => {
     };
 
     const saveToCloud = async (overrides = {}) => {
-        if (!lineId || !API_URL) return;
+        if (!lineId) return;
 
         const currentData = {
             sheep,
             inventory,
-            nickname: overrides.nickname !== undefined ? overrides.nickname : nickname,
-            name: currentUser,
             lastSave: Date.now()
         };
 
-        sessionStorage.setItem(`sheep_game_data_${lineId}`, JSON.stringify(currentData));
+        // Determnie nickname to save
+        const nicknameToSave = overrides.nickname !== undefined ? overrides.nickname : nickname;
+
+        sessionStorage.setItem(`sheep_game_data_${lineId}`, JSON.stringify({
+            ...currentData,
+            nickname: nicknameToSave,
+            name: currentUser
+        }));
+
         try {
-            await fetch(API_URL, {
-                method: 'POST', keepalive: true,
-                body: JSON.stringify({
-                    action: 'save',
-                    user: lineId,
-                    data: currentData,
-                    nickname: currentData.nickname
-                })
-            });
-            console.log("Auto-save success", currentData);
+            const { error } = await supabase
+                .from('users')
+                .upsert({
+                    id: lineId,
+                    game_data: currentData,
+                    nickname: nicknameToSave,
+                    name: currentUser, // Ensure name is updated
+                    last_login: new Date().toISOString()
+                });
+
+            if (error) throw error;
+            console.log("Auto-save success via Supabase");
         } catch (e) { console.error("Auto-save failed", e); }
     };
 
