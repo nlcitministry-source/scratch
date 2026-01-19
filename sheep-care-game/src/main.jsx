@@ -4,15 +4,14 @@ import './index.css'
 import './debug.css'
 import App from './App.jsx'
 import { GameProvider } from './context/GameContext.jsx'
-import { ErrorBoundary } from './components/ErrorBoundary';
-
+import ErrorBoundary from './components/ErrorBoundary';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <GameProvider>
-      <ErrorBoundary>
+    <ErrorBoundary>
+      <GameProvider>
         <App />
-      </ErrorBoundary>
-    </GameProvider>
+      </GameProvider>
+    </ErrorBoundary>
   </StrictMode>,
 )

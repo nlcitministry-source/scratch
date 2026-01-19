@@ -1,38 +1,42 @@
+
 import React from 'react';
 
-export class ErrorBoundary extends React.Component {
+class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
         this.state = { hasError: false, error: null, errorInfo: null };
     }
 
     static getDerivedStateFromError(error) {
-        return { hasError: true, error };
+        return { hasError: true };
     }
 
     componentDidCatch(error, errorInfo) {
         console.error("Uncaught error:", error, errorInfo);
         this.setState({ error, errorInfo });
-
-        // Auto-refresh logic (prevent infinite loop)
-        const lastCrash = sessionStorage.getItem('last_crash_timestamp');
-        const now = Date.now();
-
-        // If last crash was more than 10 seconds ago, safe to auto-reload
-        if (!lastCrash || (now - parseInt(lastCrash)) > 10000) {
-            sessionStorage.setItem('last_crash_timestamp', now.toString());
-            console.log("Auto-refreshing due to error...");
-            window.location.reload();
-        }
     }
 
     render() {
         if (this.state.hasError) {
-            // User requested no error screen, just silent recovery.
-            // The componentDidCatch will handle the reload.
-            return <div style={{ width: '100vw', height: '100vh', background: '#87CEEB' }}></div>;
+            return (
+                <div style={{ padding: '20px', color: 'red', background: 'white', height: '100vh', overflow: 'auto' }}>
+                    <h1>💥 Something went wrong.</h1>
+                    <h2 style={{ fontSize: '1.2rem', color: '#333' }}>Error: {this.state.error && this.state.error.toString()}</h2>
+                    <details style={{ whiteSpace: 'pre-wrap', marginTop: '10px', color: '#666' }}>
+                        {this.state.errorInfo && this.state.errorInfo.componentStack}
+                    </details>
+                    <button
+                        onClick={() => window.location.reload()}
+                        style={{ marginTop: '20px', padding: '10px 20px', fontSize: '1.2rem' }}
+                    >
+                        Reload Game
+                    </button>
+                </div>
+            );
         }
 
         return this.props.children;
     }
 }
+
+export default ErrorBoundary;

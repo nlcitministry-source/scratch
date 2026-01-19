@@ -124,6 +124,13 @@ export const GameProvider = ({ children }) => {
 
         // Sync with Cloud (Login/Register)
         try {
+            if (!API_URL) {
+                alert("⚠️ Error: API_URL is missing! Please report this.");
+                console.error("API_URL is undefined");
+                setIsLoading(false);
+                return;
+            }
+
             const res = await fetch(API_URL, {
                 method: 'POST', body: JSON.stringify({
                     action: 'line_login',
@@ -148,9 +155,11 @@ export const GameProvider = ({ children }) => {
                     setSheep([]); setInventory([]);
                 }
             } else {
+                alert(`❌ Login Sync Failed: ${result.message}`);
                 showMessage(`❌ 登入資料同步失敗: ${result.message}`);
             }
         } catch (e) {
+            alert(`⚠️ Connection Error: ${e.message}`);
             showMessage("⚠️ 連線失敗 (Cloud Sync)");
             console.error(e);
         } finally {
