@@ -131,14 +131,23 @@ export const GameProvider = ({ children }) => {
                 return;
             }
 
-            const res = await fetch(API_URL, {
-                method: 'POST', body: JSON.stringify({
-                    action: 'line_login',
-                    lineId: userId,
-                    name: displayName,
-                    avatar: pictureUrl
-                })
-            });
+            // Sync with Cloud (Login/Register)
+            // Add Timeout to prevent infinite loading
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('Request Timeout')), 10000)
+            );
+
+            const res = await Promise.race([
+                fetch(API_URL, {
+                    method: 'POST', body: JSON.stringify({
+                        action: 'line_login',
+                        lineId: userId,
+                        name: displayName,
+                        avatar: pictureUrl
+                    })
+                }),
+                timeoutPromise
+            ]);
             const result = await res.json();
 
             if (result.status === 'success') {

@@ -10,10 +10,36 @@ import { SheepList } from './components/SheepList';
 import './App.css';
 
 function App() {
-  const { currentUser, message } = useGame();
+  const { currentUser, message, isLoading } = useGame();
   const [selectedSheepId, setSelectedSheepId] = useState(null);
   const [showGuide, setShowGuide] = useState(false);
   const [showList, setShowList] = useState(false);
+  const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
+
+  // 3. Reset state when user changes
+  useEffect(() => {
+    setSelectedSheepId(null);
+    setShowList(false);
+    setShowGuide(false);
+    setIsControlsCollapsed(false);
+  }, [currentUser]);
+
+  // 0. Global Loading (Prevent empty blue screen during sync)
+  if (isLoading) {
+    console.log("App Rendering: Loading State");
+    return (
+      <div style={{
+        width: '100vw', height: '100vh',
+        display: 'flex', flexDirection: 'column',
+        justifyContent: 'center', alignItems: 'center',
+        background: '#f0faff', color: '#555'
+      }}>
+        <div style={{ fontSize: '3rem', marginBottom: '20px' }}>⏳</div>
+        <h2>正在同步羊群資料... (v1.1)</h2>
+        <p>Connecting to Cloud...</p>
+      </div>
+    );
+  }
 
   // 1. Not Logged In -> Show Login Screen
   if (!currentUser) {
@@ -29,16 +55,6 @@ function App() {
     // setShowList(false); // Changed: Keep list open in background to preserve scroll positions
     setSelectedSheepId(sheep.id);
   };
-
-  const [isControlsCollapsed, setIsControlsCollapsed] = useState(false);
-
-  // 3. Reset state when user changes
-  useEffect(() => {
-    setSelectedSheepId(null);
-    setShowList(false);
-    setShowGuide(false);
-    setIsControlsCollapsed(false);
-  }, [currentUser]);
 
   return (
     <div className="game-container" key={currentUser}>
