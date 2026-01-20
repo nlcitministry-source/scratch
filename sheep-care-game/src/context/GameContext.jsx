@@ -511,11 +511,12 @@ export const GameProvider = ({ children }) => {
             currentUser, nickname, setNickname, lineId, isAdmin,
             sheep, inventory, message, weather,
             location, updateUserLocation,
-            adoptSheep,
+            adoptSheep, updateSheep,
             loginWithLine, logout,
-            prayForSheep, deleteMultipleSheep,
-            saveToCloud, // Exposed
-            notificationEnabled, toggleNotification // Exposed
+            prayForSheep, deleteSheep, deleteMultipleSheep, shepherdSheep,
+            saveToCloud, forceLoadFromCloud, // Exposed
+            notificationEnabled, toggleNotification, // Exposed
+            updateNickname // Exposed
         }}>
             {children}
         </GameContext.Provider>

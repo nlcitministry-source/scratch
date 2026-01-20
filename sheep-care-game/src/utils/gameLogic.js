@@ -227,8 +227,11 @@ export const calculateTick = (s) => {
     if (newHealth <= 0 && s.status !== 'dead') {
         newStatus = 'dead';
         newHealth = 0;
-    } else if (newHealth < 50 && s.status === 'healthy' && Math.random() < 0.005) {
+    } else if (newHealth < 40 && s.status === 'healthy' && Math.random() < 0.005) {
         newStatus = 'sick';
+    } else if (newHealth >= 40 && s.status === 'sick') {
+        // Auto-recover from sickness if health is restored (e.g. by Admin or other means)
+        newStatus = 'healthy';
     }
 
     // 3. Message Logic
