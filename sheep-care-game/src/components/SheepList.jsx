@@ -72,9 +72,9 @@ export const SheepList = ({ onSelect, onClose }) => {
                                             </div>
                                         )}
                                         <div style={{ fontSize: '0.8rem', color: isDead ? '#999' : (isSick ? 'red' : 'green'), whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                            {isDead ? '已離世 (需復活)' : (isSick ? '生病中' : '健康')}
-                                            {!isDead && ` | HP: ${Math.round(s.health)}%`}
-                                            {!isDead && <span style={{ color: '#ff9800', marginLeft: '5px' }}>| ❤️ ${s.careLevel || 0}</span>}
+                                            {isDead ? '已離世 (需復活)' : (isSick ? '生病中' : '正常')}
+                                            {!isDead && ` | 負擔: ${Math.round(s.health)}%`}
+                                            {!isDead && <span style={{ color: '#ff9800', marginLeft: '5px' }}>| ❤️: {s.careLevel || 0}</span>}
                                         </div>
                                         {/* Message Preview */}
                                         <div style={{

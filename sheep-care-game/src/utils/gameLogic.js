@@ -63,7 +63,7 @@ const MATURITY_MESSAGES = {
         "穩定": [
             "這裡感覺很溫馨。", "我喜歡這裡的氛圍。", "今天也是美好的一天。", "認識新朋友真好。", "牧羊人對我很好。"
         ],
-        "領袖": [
+        "突破": [
             "我會帶新朋友一起來！", "這裡很棒，你也來看看！", "大家一起來參加！"
         ]
     },
@@ -74,7 +74,7 @@ const MATURITY_MESSAGES = {
         "穩定": [
             "禱告讓我心裡平安。", "想要更穩定來這裡。", "牧羊人的聲音真好聽。", "覺得被安慰了。", "喜歡這裡的詩歌。"
         ],
-        "領袖": [
+        "突破": [
             "我也可以分享我的感動！", "帶了朋友一起來聽。", "這週要不要一起來？", "我被改變了！"
         ]
     },
@@ -85,7 +85,7 @@ const MATURITY_MESSAGES = {
         "穩定": [
             "感謝主的恩典！", "凡事謝恩。", "喜樂的心乃是良藥。", "主是我的牧者。", "不住禱告。"
         ],
-        "領袖": [
+        "突破": [
             "我們一起為羊群禱告！", "去關心那隻迷途的小羊吧。", "主要使用我！", "看顧羊群是我的責任。", "願主的名得榮耀！"
         ]
     }
@@ -210,24 +210,15 @@ export const calculateTick = (s) => {
     // Don't decay if dead
     let newHealth = s.status === 'dead' ? 0 : Math.max(0, s.health - decayRate);
     let newStatus = s.status;
-    let newType = s.type;
-    let newCare = s.careLevel;
+    let newCare = s.careLevel; // Kept for backend compatibility but not used for evolution
+
+    // Enforce Type based on Health
+    // < 80: LAMB (Weak or Healthy), >= 80: STRONG
+    let newType = (newHealth >= 80) ? 'STRONG' : 'LAMB';
 
     if (newHealth <= 0 && s.status !== 'dead') {
-        if (s.type === 'GLORY') {
-            newType = 'STRONG';
-            newHealth = 100;
-            newCare = 0;
-            newStatus = 'healthy'; // Survive
-        } else if (s.type === 'STRONG') {
-            newType = 'LAMB';
-            newHealth = 100;
-            newCare = 0;
-            newStatus = 'healthy'; // Survive
-        } else {
-            newStatus = 'dead';
-            newHealth = 0;
-        }
+        newStatus = 'dead';
+        newHealth = 0;
     } else if (newHealth < 50 && s.status === 'healthy' && Math.random() < 0.005) {
         newStatus = 'sick';
     }
@@ -251,8 +242,8 @@ export const calculateTick = (s) => {
             const match = matString.match(/^(.+?)(?:\s*\((.+)\))?$/);
             if (match) {
                 const level = match[1];
-                const stage = match[2] || '學習中'; // Default to learning if not specified
-                if (MATURITY_MESSAGES[level] && MATURITY_MESSAGES[level][stage]) {
+                const stage = match[2]; // No default
+                if (stage && MATURITY_MESSAGES[level] && MATURITY_MESSAGES[level][stage]) {
                     specificMsg = getRandomItem(MATURITY_MESSAGES[level][stage]);
                 }
                 // If only level is known (old data or simple input), try to pick from any stage or default

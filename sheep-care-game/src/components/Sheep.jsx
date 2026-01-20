@@ -49,7 +49,7 @@ export const Sheep = ({ sheep, onPray, onShepherd, onSelect }) => {
                 }}
                 onClick={(e) => {
                     e.preventDefault();
-                    onPray(sheep.id);
+                    onSelect(sheep);
                 }}
             >
                 <SheepVisual

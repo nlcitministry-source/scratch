@@ -5,7 +5,7 @@ import { AddSheepModal } from './AddSheepModal';
 import { SettingsModal } from './SettingsModal';
 
 export const Controls = ({ onOpenList, isCollapsed, onToggleCollapse }) => {
-    const { adoptSheep, sheep, currentUser, saveToCloud } = useGame(); // Removed logout here
+    const { adoptSheep, sheep, currentUser, nickname, saveToCloud } = useGame(); // Removed logout here
     const [showAddModal, setShowAddModal] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
 
@@ -32,7 +32,7 @@ export const Controls = ({ onOpenList, isCollapsed, onToggleCollapse }) => {
             {!isCollapsed && (
                 <>
                     <div className="stats-panel" style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                        <div style={{ fontSize: '0.9rem' }}>👋 嗨，牧羊人 <strong>{currentUser}</strong></div>
+                        <div style={{ fontSize: '0.9rem' }}>👋 嗨，牧羊人 <strong>{nickname || currentUser}</strong></div>
                         <div><strong>目前羊隻:</strong> {(sheep || []).length} 隻 🐑</div>
                     </div>
 

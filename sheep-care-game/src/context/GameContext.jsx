@@ -23,6 +23,8 @@ export const GameProvider = ({ children }) => {
     const [lineId, setLineId] = useState(null); // Line User ID
     const [isLoading, setIsLoading] = useState(true);
 
+    const [isDataLoaded, setIsDataLoaded] = useState(false);
+
     const getLocalData = (key, fallback) => {
         // We only load data if we have a valid session user
         const storedUser = sessionStorage.getItem('sheep_current_session'); // store LineID now? Or name? Let's store LineID.
@@ -39,6 +41,8 @@ export const GameProvider = ({ children }) => {
     const [inventory, setInventory] = useState([]);
     const [message, setMessage] = useState(null);
     const [weather, setWeather] = useState({ type: 'sunny', isDay: true, temp: 25 });
+
+    // ... (Location state omitted for brevity, logic unchanged) ...
 
     // User Location State (Persisted in LocalStorage - Device Preference)
     const [location, setLocation] = useState(() => {
@@ -101,6 +105,7 @@ export const GameProvider = ({ children }) => {
                     setSheep(parsed.sheep || []);
                     setInventory(parsed.inventory || []);
                     setNickname(parsed.nickname || null);
+                    setIsDataLoaded(true); // MARK: Local restore success
 
                     // Fallback name logic
                     if (parsed.name) setCurrentUser(parsed.name);
@@ -191,9 +196,11 @@ export const GameProvider = ({ children }) => {
                 if (existingUser.nickname) setNickname(existingUser.nickname);
                 else setNickname(null);
 
+                setIsDataLoaded(true); // MARK: Cloud load success
+
                 if (diff > 12) showMessage(`✨ ${getSheepMessage('login')} (離開 ${Math.round(diff)} 小時)`);
                 else if (diff > 1) showMessage(`您離開了 ${Math.round(diff)} 小時，羊群狀態更新了...`);
-                else showMessage(`歡迎回來，${displayName}! 👋`);
+                else showMessage(`歡迎回來，${existingUser.nickname || displayName}! 👋`);
             } else {
                 // New User - Insert
                 const { error: insertError } = await supabase
@@ -211,11 +218,13 @@ export const GameProvider = ({ children }) => {
                 showMessage("歡迎新加入的牧羊人！ 🎉");
                 setSheep([]); setInventory([]);
                 setNickname(null);
+                setIsDataLoaded(true); // MARK: New User success
             }
         } catch (e) {
             alert(`⚠️ Connection Error: ${e.message}`);
             showMessage("⚠️ 連線失敗 (Cloud Sync)");
             console.error(e);
+            // DO NOT set isDataLoaded(true) here
         } finally {
             setIsLoading(false);
         }
@@ -232,6 +241,7 @@ export const GameProvider = ({ children }) => {
         sessionStorage.removeItem('sheep_current_session');
         if (lineId) sessionStorage.removeItem(`sheep_game_data_${lineId}`);
         setSheep([]); setInventory([]);
+        setIsDataLoaded(false); // Reset
         window.location.reload();
     };
 
@@ -242,7 +252,18 @@ export const GameProvider = ({ children }) => {
         const lastSave = loadedData.lastSave || now;
         const diffHours = (now - lastSave) / (1000 * 60 * 60);
 
+        // Deduplicate Logic: ensure all IDs are unique
+        const seenIds = new Set();
         const decaySheep = (loadedData.sheep || [])
+            .map(s => {
+                if (seenIds.has(s.id)) {
+                    // Collision found! generate new ID
+                    const newId = `${s.id}_${Math.random().toString(36).substr(2, 5)}`;
+                    return { ...s, id: newId };
+                }
+                seenIds.add(s.id);
+                return s;
+            })
             .filter(s => s && s.type && SHEEP_TYPES[s.type])
             .map(s => {
                 if (s.status === 'dead') return s;
@@ -259,14 +280,8 @@ export const GameProvider = ({ children }) => {
                 let newType = s.type;
                 let newCare = s.careLevel;
 
-                if (newHealth <= 0) { // Demotion
-                    if (s.type === 'GLORY') {
-                        newType = 'STRONG'; newHealth = 100; newCare = 0; newStatus = 'healthy';
-                    } else if (s.type === 'STRONG') {
-                        newType = 'LAMB'; newHealth = 100; newCare = 0; newStatus = 'healthy';
-                    } else {
-                        newStatus = 'dead'; newHealth = 0;
-                    }
+                if (newHealth <= 0) {
+                    newStatus = 'dead'; newHealth = 0;
                 } else if (newHealth < 50 && s.status === 'healthy' && Math.random() < 0.5) newStatus = 'sick';
 
                 return sanitizeSheep({ ...s, health: newHealth, status: newStatus, type: newType, careLevel: newCare });
@@ -289,6 +304,10 @@ export const GameProvider = ({ children }) => {
 
     const saveToCloud = async (overrides = {}) => {
         if (!lineId) return;
+        if (!isDataLoaded) {
+            console.warn("Skipping save: Data not fully loaded.");
+            return;
+        }
 
         const currentData = {
             sheep,
@@ -319,6 +338,32 @@ export const GameProvider = ({ children }) => {
             if (error) throw error;
             console.log("Auto-save success via Supabase");
         } catch (e) { console.error("Auto-save failed", e); }
+    };
+
+    const forceLoadFromCloud = async () => {
+        if (!lineId) {
+            showMessage("⚠️ 無法連線：使用者未登入");
+            return;
+        }
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase.from('users').select('*').eq('id', lineId).single();
+            if (error) throw error;
+            if (data && data.game_data) {
+                applyLoadedData(data.game_data, lineId);
+                // Also update nickname if changed in DB
+                if (data.nickname) setNickname(data.nickname);
+                setIsDataLoaded(true);
+                showMessage("✅ 雲端資料讀取成功！(已覆蓋本地進度)");
+            } else {
+                showMessage("⚠️ 雲端無資料可讀取");
+            }
+        } catch (e) {
+            console.error(e);
+            showMessage("❌ 讀取失敗：" + e.message);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     // Auto-Save Logic
@@ -352,7 +397,7 @@ export const GameProvider = ({ children }) => {
     const adoptSheep = (data = {}) => {
         const { name = '小羊', spiritualMaturity = '' } = data;
         const newSheep = {
-            id: Date.now(),
+            id: `${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
             name, type: 'LAMB',
             spiritualMaturity,
             careLevel: 0, health: 100, strength: 0, status: 'healthy',
@@ -369,6 +414,8 @@ export const GameProvider = ({ children }) => {
         setSheep(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
     };
 
+    const isAdmin = lineId === 'admin';
+
     const prayForSheep = (id) => {
         const today = new Date().toDateString();
         setSheep(prev => prev.map(s => {
@@ -380,11 +427,18 @@ export const GameProvider = ({ children }) => {
                 if (lastDate) {
                     diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24));
                 }
-                if (diffDays === 0) {
+                const isContinuous = diffDays === 1 || diffDays === -1;
+
+                // Admin Bypass: Allow unlimited resurrection progress per day if needed? 
+                // User requirement said "Unlimited Prayers", usually implies the daily limit.
+                // Let's allow Admin to spam resurrection too if they want
+                if (!isAdmin && diffDays === 0) {
                     showMessage("今天已經為這隻小羊禱告過了，請明天再來！🙏");
                     return s;
                 }
-                let newProgress = (diffDays === 1 || diffDays === -1) ? (s.resurrectionProgress || 0) + 1 : 1;
+
+                let newProgress = (isContinuous || isAdmin) ? (s.resurrectionProgress || 0) + 1 : 1;
+
                 if (newProgress >= 5) {
                     showMessage(`✨ 奇蹟發生了！${s.name} 復活了！`);
                     return {
@@ -392,27 +446,25 @@ export const GameProvider = ({ children }) => {
                         resurrectionProgress: 0, lastPrayedDate: today, prayedCount: 0
                     };
                 } else {
-                    const statusMsg = diffDays > 1 ? "禱告中斷了，重新開始..." : "迫切認領禱告進行中...";
+                    const statusMsg = (!isAdmin && diffDays > 1) ? "禱告中斷了，重新開始..." : "迫切認領禱告進行中...";
                     showMessage(`🙏 ${statusMsg} (${newProgress}/5)`);
                     return { ...s, resurrectionProgress: newProgress, lastPrayedDate: today };
                 }
             }
+
             let count = (s.lastPrayedDate === today) ? s.prayedCount : 0;
-            if (count >= 3) {
+            if (!isAdmin && count >= 3) {
                 showMessage("這隻小羊今天已經接受過 3 次禱告了，讓牠休息一下吧！🙏");
                 return s;
             }
             const newHealth = Math.min(100, s.health + 6);
             const newStatus = (s.status !== 'healthy') ? 'healthy' : s.status;
             const newCare = s.careLevel + 10;
+            // Type is handled in calculateTick based on health
             let newType = s.type;
-            let finalCare = newCare;
-            const typeDef = SHEEP_TYPES[s.type];
-            if (typeDef.nextStage && newCare >= typeDef.growthThreshold) {
-                finalCare = 0; newType = typeDef.nextStage.toUpperCase();
-            }
+
             return {
-                ...s, status: newStatus, health: newHealth, type: newType, careLevel: finalCare,
+                ...s, status: newStatus, health: newHealth, type: newType, careLevel: newCare,
                 lastPrayedDate: today, prayedCount: count + 1
             };
         }));
@@ -432,7 +484,7 @@ export const GameProvider = ({ children }) => {
         <GameContext.Provider value={{
             currentUser, lineId, isLoading, sheep, inventory, message, weather, location, nickname,
             adoptSheep, prayForSheep, shepherdSheep, updateSheep, deleteSheep, updateUserLocation,
-            loginWithLine, logout, saveToCloud, updateNickname
+            loginWithLine, logout, saveToCloud, updateNickname, forceLoadFromCloud, isAdmin
         }}>
             {children}
         </GameContext.Provider>

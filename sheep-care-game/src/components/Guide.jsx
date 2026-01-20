@@ -14,13 +14,13 @@ export const Guide = ({ onClose }) => {
                     <h4>1. 每日照顧與進化</h4>
                     <p>上帝限制了每日的影響力，讓成長循序漸進：</p>
                     <ul>
-                        <li><strong>禱告 (Prayer):</strong> 每隻小羊每天最多 <strong>3 次</strong>。</li>
-                        <li><strong>健康 (Health):</strong> 每次禱告恢復生命，主要依賴持續的關心。</li>
-                        <li><strong>生命三階段 (關愛值):</strong>
+                        <li><strong>禱告 (Prayer):</strong> 每隻小羊每天最多 <strong>3 次</strong> (每次恢復 <strong>+6 負擔</strong>)。</li>
+                        <li><strong>負擔 (Burden):</strong> 每次禱告恢復負擔，代表對靈魂的負擔與關愛。</li>
+                        <li><strong>生命三階段 (負擔指數):</strong>
                             <div style={{ background: '#e3f2fd', padding: '8px', borderRadius: '4px', margin: '5px 0', fontSize: '0.85rem' }}>
-                                🥚 <strong>小羊 (Lamb):</strong> 需累積 100 關愛值，滿了將進化並歸零。<br />
-                                🐏 <strong>強壯的羊 (Strong):</strong> 需再累積 100 關愛值，將進化為榮耀的羊。<br />
-                                🧍 <strong>榮耀的羊 (Glory):</strong> 最終形態，充滿靈性的樣式。
+                                🍂 <strong>虛弱 (Weak):</strong> 負擔 &lt; 40，小羊看起來無精打采。<br />
+                                🐑 <strong>健康 (Healthy):</strong> 負擔 40-79，精神飽滿的樣子。<br />
+                                💪 <strong>強壯 (Strong):</strong> 負擔 &ge; 80，長出羊角，強壯有力！
                             </div>
                         </li>
                     </ul>
@@ -28,9 +28,8 @@ export const Guide = ({ onClose }) => {
                     <h4>2. 離線與自然衰退</h4>
                     <p>即使不在線上，時間仍在流動：</p>
                     <ul>
-                        <li><strong>離線機制:</strong> 下次登入時，系統會根據您離開的時間計算健康流失。</li>
-                        <li><strong>狀態影響:</strong> 生病或受傷的小羊，健康流失速度會更快。</li>
-                        <li><strong>自動降級:</strong> 若健康歸零，榮耀的羊會變回強壯，強壯會變回小羊...直到死亡。</li>
+                        <li><strong>離線機制:</strong> 負擔會自然流失 (每天約 <strong>13%</strong>)。</li>
+                        <li><strong>狀態影響:</strong> 生病或受傷流失更快 (每天約 <strong>17-20%</strong>)。</li>
                     </ul>
 
                     <h4>3. 死亡與復活 (Miracle)</h4>

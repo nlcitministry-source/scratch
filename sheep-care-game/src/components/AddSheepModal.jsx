@@ -14,7 +14,7 @@ export const AddSheepModal = ({ onConfirm, onCancel }) => {
             // Format: "Name, Level, Stage" or "Name, Level"
             const lines = batchInput.split('\n').filter(line => line.trim());
             const sheepData = lines.map(line => {
-                const parts = line.split(/[,\t]+/).map(p => p.trim());
+                const parts = line.split(/[ \t,，]+/).map(p => p.trim());
                 const sName = parts[0];
                 const sLevel = parts[1] || '';
                 const sStage = parts[2] || '';
@@ -98,12 +98,12 @@ export const AddSheepModal = ({ onConfirm, onCancel }) => {
                             </label>
                             <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '5px' }}>
                                 <div style={{ fontSize: '0.8rem', color: '#666', marginBottom: '5px' }}>
-                                    格式: 名字, 靈程, 階段<br />
-                                    (階段: 學習中, 穩定, 領袖)<br />
+                                    格式: 名字 靈程 (階段)<br />
+                                    (分隔: 空白, 逗號 皆可)<br />
                                     例如: <br />
                                     <code style={{ background: '#eee', padding: '2px', display: 'block' }}>
-                                        王大明, 新朋友, 學習中<br />
-                                        李小美, 基督徒, 領袖
+                                        王大明 新朋友 學習中<br />
+                                        李小美 基督徒 領袖
                                     </code>
                                 </div>
                             </div>

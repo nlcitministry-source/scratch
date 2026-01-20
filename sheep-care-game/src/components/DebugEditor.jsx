@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 
 export const DebugEditor = ({ selectedSheepId, onClose }) => {
-    const { sheep, updateSheep, prayForSheep, deleteSheep } = useGame();
+    const { sheep, updateSheep, prayForSheep, deleteSheep, forceLoadFromCloud, isAdmin } = useGame();
 
     const target = (sheep || []).find(s => s.id === selectedSheepId);
     const [name, setName] = useState('');
@@ -48,13 +48,9 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
     if (!target) return null;
 
     const handleSave = () => {
-        let finalMaturity = sLevel;
-        if (sLevel && sStage) {
-            finalMaturity = `${sLevel} (${sStage})`;
-        }
+        const finalMaturity = sLevel;
         updateSheep(target.id, { name, note, spiritualMaturity: finalMaturity });
         setIsEditing(false); // Exit edit mode
-        // onClose(); // Removed to allow viewing changes
     };
 
     const handleCancel = () => {
@@ -88,7 +84,7 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
     const handlePray = () => {
         const todayStr = new Date().toDateString();
         // Check if Dead and already prayed today
-        if (target.status === 'dead' && target.lastPrayedDate === todayStr) {
+        if (target.status === 'dead' && target.lastPrayedDate === todayStr && !isAdmin) {
             setLocalMsg("今天已經為這隻小羊禱告過了，請明天再來！🙏");
             return;
         }
@@ -111,7 +107,11 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
     if (isDead) {
         buttonText = `🔮 迫切認領禱告 (${target.resurrectionProgress || 0}/5)`;
     } else {
-        buttonText = isFull ? '🙏 今日禱告已達上限' : `🙏 為牠禱告 (今日: ${currentCount}/3)`;
+        if (isAdmin) {
+            buttonText = `🙏 為牠禱告 (今日: ${currentCount}/∞)`;
+        } else {
+            buttonText = isFull ? '🙏 今日禱告已達上限' : `🙏 為牠禱告 (今日: ${currentCount}/3)`;
+        }
     }
 
     // Status Text
@@ -185,25 +185,27 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                             <option value="基督徒">基督徒</option>
                         </select>
 
-                        {sLevel && (
-                            <select
-                                value={sStage}
-                                onChange={(e) => setSStage(e.target.value)}
-                                disabled={!isEditing}
-                                style={{ width: '100%', padding: '8px', borderRadius: '8px' }}
-                            >
-                                <option value="學習中">學習中</option>
-                                <option value="穩定">穩定</option>
-                                <option value="領袖">領袖</option>
-                            </select>
-                        )}
+                        {/* Stage Selection Removed */}
                     </div>
 
                     <div className="form-group">
-                        <label>屬性狀態 (系統自動變更)</label>
+                        <label>負擔狀態 (依照數值)</label>
                         <div style={{ padding: '8px', background: '#eee', borderRadius: '8px', color: '#555', fontSize: '0.9rem' }}>
-                            {target.type === 'LAMB' ? '🥚 小羊' : (target.type === 'STRONG' ? '🐏 強壯的羊' : '🧍 榮耀的羊')}
+                            {target.health < 40 ? '🍂 虛弱' : (target.health >= 80 ? '💪 強壯' : '🐑 正常')}
                         </div>
+                        {isAdmin && !isDead && (
+                            <div style={{ marginTop: '10px', padding: '10px', background: '#e0f7fa', borderRadius: '8px', border: '1px dashed #00bcd4' }}>
+                                <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: '#006064' }}>🔧 管理員調整: {Math.round(target.health)}%</label>
+                                <input
+                                    type="range"
+                                    min="0"
+                                    max="100"
+                                    value={target.health}
+                                    onChange={(e) => updateSheep(target.id, { health: Number(e.target.value) })}
+                                    style={{ width: '100%', cursor: 'pointer' }}
+                                />
+                            </div>
+                        )}
                     </div>
 
                     <div className="form-group">
@@ -221,10 +223,10 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                     <button
                         className="pray-action-btn"
                         onClick={handlePray}
-                        disabled={!isDead && isFull}
+                        disabled={!isDead && isFull && !isAdmin}
                         style={{
-                            opacity: (!isDead && isFull) ? 0.6 : 1,
-                            cursor: (!isDead && isFull) ? 'not-allowed' : 'pointer',
+                            opacity: (!isDead && isFull && !isAdmin) ? 0.6 : 1,
+                            cursor: (!isDead && isFull && !isAdmin) ? 'not-allowed' : 'pointer',
                             background: isDead ? '#9c27b0' : undefined // Purple for magic
                         }}
                     >
@@ -250,7 +252,7 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                     {/* Reset Confirmation Section */}
                     {resetConfirmOpen ? (
                         <div style={{ background: '#fff3e0', padding: '10px', borderRadius: '8px', border: '1px solid #ffe0b2', marginBottom: '10px' }}>
-                            <p style={{ color: '#e65100', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '8px' }}>確定要重置所有資料嗎？(將回到初始健康狀態)</p>
+                            <p style={{ color: '#e65100', fontWeight: 'bold', fontSize: '0.9rem', marginBottom: '8px' }}>確定要重置所有資料嗎？(將回到初始狀態)</p>
                             <div style={{ display: 'flex', gap: '10px' }}>
                                 <button
                                     onClick={() => {
@@ -386,6 +388,8 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                     )}
                 </div>
             </div>
+
         </div>
+
     );
 };
