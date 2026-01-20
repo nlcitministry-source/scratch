@@ -582,7 +582,7 @@ export const GameProvider = ({ children }) => {
         const { name = '小羊', spiritualMaturity = '' } = data;
 
         // Optimistic UI Update (Temp ID)
-        const tempId = `temp_${Date.now()}`;
+        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
         const visual = generateVisuals();
         const newSheep = {
             id: tempId,
