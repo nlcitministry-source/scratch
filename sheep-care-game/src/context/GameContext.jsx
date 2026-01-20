@@ -91,33 +91,15 @@ export const GameProvider = ({ children }) => {
         setTimeout(() => setMessage(null), 3000);
     };
 
-    // --- Session Restoration (Fix for Refresh) ---
+    // --- Session Restoration (User Requested Removal for Strict Cloud Truth) ---
+    // User wants to clear cache on exit, so we DO NOT restore from localStorage on mount.
+    // Logic: Login -> Fetch Cloud -> Render.
+    // If we restore here, we might get stale data that conflicts or duplicates with Cloud data later.
     useEffect(() => {
-        const storedUserId = localStorage.getItem('sheep_current_session');
-        if (storedUserId) {
-            const cachedData = localStorage.getItem(`sheep_game_data_${storedUserId}`);
-            if (cachedData) {
-                try {
-                    const parsed = JSON.parse(cachedData);
-                    console.log("Restoring session:", parsed);
-
-                    setLineId(storedUserId);
-                    setSheep(parsed.sheep || []);
-                    setInventory(parsed.inventory || []);
-                    setNickname(parsed.nickname || null);
-                    setIsDataLoaded(true); // MARK: Local restore success
-
-                    // Fallback name logic
-                    if (parsed.name) setCurrentUser(parsed.name);
-                    else if (storedUserId === 'admin') setCurrentUser('Admin');
-                    else setCurrentUser('Unknown'); // Should trigger login if null, but we want to avoid that if possible
-
-                    setIsLoading(false); // Stop loading screen if restored
-                } catch (e) {
-                    console.error("Failed to restore session", e);
-                }
-            }
-        }
+        // Just clear any lingering session if we want "Fresh on Refresh"
+        // But Line Login might redirect. 
+        // If we want "Persistence across Refresh", we keep localStorage but rely entirely on Cloud for "Truth".
+        // The problem of "Duplication" comes from MERGING. We must NOT merge in handleLoginSuccess.
     }, []);
 
     const toggleNotification = async () => {
@@ -186,7 +168,15 @@ export const GameProvider = ({ children }) => {
         setCurrentUser(displayName);
         localStorage.setItem('sheep_current_session', userId);
 
-        try { sessionStorage.clear(); } catch (e) { }
+        try {
+            // Clear legacy session storage 
+            sessionStorage.clear();
+            // Also Request: Clear Cache on Exit? 
+            // If user wants "Fresh state every time", maybe we shouldn't even use localStorage for `sheep_game_data_...`?
+            // But we need it for "Refresh Page" persistence?
+            // User said: "Success fetch -> Save" and "Clear on Exit".
+            // So on Login Success, we should probably IGNORE local cache and just overwrite.
+        } catch (e) { }
 
         showMessage(`設定羊群中... (Hi, ${displayName})`);
 
@@ -217,18 +207,14 @@ export const GameProvider = ({ children }) => {
                 // If user has old JSON sheep but NO new relational sheep, migrate them!
                 let finalSheep = [];
                 // Check Cloud Backup OR Local Storage (if Cloud was wiped by race condition)
-                const localStr = localStorage.getItem(`sheep_game_data_${userId}`);
-                const localBackup = localStr ? JSON.parse(localStr).sheep : [];
+                // --- STRICT CLOUD AUTHORITY ---
 
-                const sourceForMigration = (existingUser.game_data?.sheep?.length > 0)
-                    ? existingUser.game_data.sheep
-                    : (localBackup.length > 0 ? localBackup : []);
+                // MIGRATION LOGIC (Simplified: Cloud-to-Cloud Only)
+                // We ignore localStorage for migration to prevent duplicating "Zombie" data
+                if (existingUser.game_data?.sheep?.length > 0 && (!sheepData || sheepData.length === 0)) {
+                    console.log("Migrating Legacy Cloud JSON...");
+                    const oldSheep = existingUser.game_data.sheep;
 
-                if ((!sheepData || sheepData.length === 0) && sourceForMigration.length > 0) {
-                    console.log("Migrating sheep to new table...", { sourceLength: sourceForMigration.length });
-                    const oldSheep = sourceForMigration;
-
-                    // Convert to DB format
                     const rowsToInsert = oldSheep.map(s => ({
                         owner_id: userId,
                         name: s.name,
@@ -254,10 +240,8 @@ export const GameProvider = ({ children }) => {
                             .select();
                         if (migErr) console.error("Migration failed", migErr);
                         else {
-                            console.log("Migration success!", migrated);
-                            finalSheep = migrated; // Use newly inserted
-                            // Clear old JSON to prevent re-migration? 
-                            // Optional, but saving 'users' later will likely clear it if we don't include it.
+                            console.log("Migration success!");
+                            finalSheep = migrated;
                         }
                     }
                 } else {
@@ -314,10 +298,13 @@ export const GameProvider = ({ children }) => {
                 if (insertError) throw insertError;
 
                 showMessage("歡迎新加入的牧羊人！ 🎉");
-                // Explicitly CLEAR local storage for fresh start (Server Authority)
-                localStorage.removeItem(`sheep_game_data_${userId}`);
+                // New User: Clear everything
                 setSheep([]); setInventory([]);
                 setNickname(null);
+
+                // Clear persistence
+                localStorage.removeItem(`sheep_game_data_${userId}`);
+
                 setIsDataLoaded(true);
             }
         } catch (e) {
@@ -545,24 +532,33 @@ export const GameProvider = ({ children }) => {
     };
 
     // Auto-Save Logic (Visibility Change + BeforeUnload)
+    // Auto-Save Logic (Visibility Change + BeforeUnload) + Clean Exit
     useEffect(() => {
         if (!lineId || !isDataLoaded) return;
 
+        const handleUnload = () => {
+            // User Request: Clear cache on exit to enforce "Cloud Only" next session
+            localStorage.removeItem('sheep_current_session');
+            if (lineId) localStorage.removeItem(`sheep_game_data_${lineId}`);
+        };
+
         const handleSave = () => { saveToCloud(); };
 
-        // Save using event handlers
-        window.addEventListener('beforeunload', handleSave);
-        document.addEventListener('visibilitychange', () => {
+        // Save on Visibility Hidden (Mobile Switch App)
+        const handleVisibility = () => {
             if (document.visibilityState === 'hidden') handleSave();
-        });
+        };
 
-        // Debounced Save (Efficiency)
+        window.addEventListener('beforeunload', handleUnload); // Clear on Close
+        document.addEventListener('visibilitychange', handleVisibility); // Save on Hide
+
+        // Debounced Save
         const timeoutId = setTimeout(() => { saveToCloud(); }, 2000);
 
         return () => {
             clearTimeout(timeoutId);
-            window.removeEventListener('beforeunload', handleSave);
-            document.removeEventListener('visibilitychange', handleSave);
+            window.removeEventListener('beforeunload', handleUnload);
+            document.removeEventListener('visibilitychange', handleVisibility);
         };
     }, [sheep, inventory, lineId, isDataLoaded]);
 
