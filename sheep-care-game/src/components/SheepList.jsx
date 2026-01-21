@@ -12,6 +12,34 @@ export const SheepList = ({ onSelect, onClose }) => {
     const [selectedIds, setSelectedIds] = useState(new Set());
     const [editingSheep, setEditingSheep] = useState(null);
     const [searchTerm, setSearchTerm] = useState(''); // Search State
+    const [filterStatus, setFilterStatus] = useState('ALL'); // 'ALL', 'HEALTHY', 'SICK', 'DEAD'
+
+    // Filter Logic
+    // Filter Logic (Memoized)
+    const filteredSheep = React.useMemo(() => sortedSheep.filter(s => {
+        const matchesSearch = s.name.toLowerCase().includes(searchTerm.toLowerCase());
+        const isDead = s.status === 'dead';
+        const isSick = s.status === 'sick';
+
+        if (!matchesSearch) return false;
+
+        if (filterStatus === 'DEAD') return isDead;
+        if (filterStatus === 'SICK') return isSick;
+        if (filterStatus === 'HEALTHY') return !isDead && !isSick;
+        return true;
+    }), [sortedSheep, searchTerm, filterStatus]);
+
+    // Counts Logic (Memoized Single Pass)
+    const counts = React.useMemo(() => sortedSheep.reduce((acc, s) => {
+        const isDead = s.status === 'dead';
+        const isSick = s.status === 'sick';
+
+        if (isDead) acc.DEAD++;
+        else if (isSick) acc.SICK++;
+        else acc.HEALTHY++;
+
+        return acc;
+    }, { ALL: sortedSheep.length, HEALTHY: 0, SICK: 0, DEAD: 0 }), [sortedSheep]);
 
     const toggleSelection = (id) => {
         const newSet = new Set(selectedIds);
@@ -24,10 +52,10 @@ export const SheepList = ({ onSelect, onClose }) => {
     };
 
     const handleSelectAll = () => {
-        if (selectedIds.size === sortedSheep.length) {
+        if (selectedIds.size === filteredSheep.length) {
             setSelectedIds(new Set()); // Deselect All
         } else {
-            const allIds = new Set(sortedSheep.map(s => s.id));
+            const allIds = new Set(filteredSheep.map(s => s.id));
             setSelectedIds(allIds);
         }
     };
@@ -67,10 +95,8 @@ export const SheepList = ({ onSelect, onClose }) => {
         }
     };
 
-    // Filter Sheep based on Search Term
-    const filteredSheep = sortedSheep.filter(s =>
-        s.name.toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    // Helper for filter counts
+    const getCount = (status) => counts[status] || 0;
 
     return (
         <div className="debug-editor-overlay" onClick={onClose}>
@@ -87,7 +113,7 @@ export const SheepList = ({ onSelect, onClose }) => {
                 <div className="simple-editor" onClick={(e) => e.stopPropagation()} style={{ width: '360px', height: '600px', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}>
                     <div className="editor-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                         <div style={{ display: 'flex', alignItems: 'center' }}>
-                            <h3>📖 小羊圖鑑 ({sheep.length})</h3>
+                            <h3>📖 小羊圖鑑 ({filteredSheep.length}/{sheep.length})</h3>
                         </div>
                         <div>
                             <button
@@ -109,7 +135,7 @@ export const SheepList = ({ onSelect, onClose }) => {
                     </div>
 
                     {/* Search Bar */}
-                    <div style={{ padding: '0 10px 10px 10px', borderBottom: isSelectionMode ? 'none' : '1px solid #eee' }}>
+                    <div style={{ padding: '0 10px 5px 10px' }}>
                         <input
                             type="text"
                             placeholder="🔍 搜尋小羊名稱..."
@@ -120,6 +146,31 @@ export const SheepList = ({ onSelect, onClose }) => {
                                 border: '1px solid #ddd', fontSize: '0.9rem'
                             }}
                         />
+                    </div>
+
+                    {/* Status Filters */}
+                    <div style={{ padding: '0 10px 10px 10px', display: 'flex', gap: '5px', overflowX: 'auto', borderBottom: isSelectionMode ? 'none' : '1px solid #eee' }}>
+                        {[
+                            { id: 'ALL', label: '全部', count: sheep.length, color: '#666' },
+                            { id: 'HEALTHY', label: '正常', count: getCount('HEALTHY'), color: '#4caf50' },
+                            { id: 'SICK', label: '生病', count: getCount('SICK'), color: '#f44336' },
+                            { id: 'DEAD', label: '已離世', count: getCount('DEAD'), color: '#9c27b0' }
+                        ].map(f => (
+                            <button
+                                key={f.id}
+                                onClick={() => setFilterStatus(f.id)}
+                                style={{
+                                    padding: '4px 10px', borderRadius: '15px', border: 'none',
+                                    fontSize: '0.8rem', cursor: 'pointer', whiteSpace: 'nowrap',
+                                    background: filterStatus === f.id ? f.color : '#eee',
+                                    color: filterStatus === f.id ? 'white' : '#666',
+                                    fontWeight: filterStatus === f.id ? 'bold' : 'normal',
+                                    transition: 'all 0.2s'
+                                }}
+                            >
+                                {f.label} <span style={{ opacity: 0.8, fontSize: '0.7rem' }}>{f.count}</span>
+                            </button>
+                        ))}
                     </div>
 
                     {isSelectionMode && (
@@ -255,12 +306,12 @@ export const SheepList = ({ onSelect, onClose }) => {
                                             </div>
                                             <div style={{
                                                 marginTop: '2px', fontSize: '0.7rem', color: '#fff',
-                                                background: isDead ? '#757575' : (s.type === 'HUMAN' ? '#ff9800' : (s.type === 'STRONG' ? '#2196f3' : '#8bc34a')),
+                                                background: isDead ? '#757575' : (isSick ? '#f44336' : (s.type === 'HUMAN' ? '#ff9800' : (s.type === 'STRONG' ? '#2196f3' : '#8bc34a'))),
                                                 padding: '2px 8px', borderRadius: '10px', whiteSpace: 'nowrap',
                                                 fontWeight: 'bold', boxShadow: '0 1px 2px rgba(0,0,0,0.15)',
                                                 transform: 'translateY(-5px)', zIndex: 2
                                             }}>
-                                                {isDead ? '陣亡' : (s.type === 'HUMAN' ? '榮耀' : (s.type === 'STRONG' ? '強壯' : '小羊'))}
+                                                {isDead ? '陣亡' : (isSick ? '生病中' : (s.type === 'HUMAN' ? '榮耀' : (s.type === 'STRONG' ? '強壯' : '小羊')))}
                                             </div>
                                         </div>
 
