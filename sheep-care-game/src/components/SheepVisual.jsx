@@ -9,60 +9,103 @@ export const SheepVisual = ({
     type = 'LAMB', // Default to LAMB
     scale = 1,
     isStatic = false,
-    name = ''
+    name = '',
+    centered = false // New Prop for UI Centering
 }) => {
     const isDead = status === 'dead';
-    const { color = '#ffffff', accessory = 'none' } = visual || {};
+    // Visual Props
+    const { color = '#ffffff', accessory = 'none', pattern = 'none' } = visual || {};
 
-    const style = {
-        position: isStatic ? 'relative' : 'absolute',
-        left: isStatic ? 'auto' : `${x}%`,
-        top: isStatic ? 'auto' : `${y}%`,
-        transform: `scale(${scale})`,
-        zIndex: isStatic ? 1 : Math.floor(y),
-        '--sheep-color': color
+    // State & Animation Classes
+    const isMoving = state === 'move';
+    const animClass = isMoving ? 'anim-bounce' : 'anim-breathe';
+    const statusClass = status !== 'healthy' ? `status-${status}` : '';
+    const typeClass = type === 'GLORY' ? 'type-gold' : (type === 'HORNED' ? 'type-horned' : '');
+    // Health Visuals
+    let healthStage = 'normal';
+    if (health > 80) healthStage = 'super';
+    else if (health < 20) healthStage = 'critical'; // < 20
+    else if (health < 40) healthStage = 'weak';     // 20-40
+
+    // Helper: Calculate contrast pattern color
+    const getContrastPatternColor = (hexColor) => {
+        if (!hexColor || !hexColor.startsWith('#')) return 'rgba(0, 0, 0, 0.15)'; // Default dark
+
+        // Simple brightness check
+        const r = parseInt(hexColor.substr(1, 2), 16);
+        const g = parseInt(hexColor.substr(3, 2), 16);
+        const b = parseInt(hexColor.substr(5, 2), 16);
+
+        // HSP Color Model formula for perceived brightness
+        const brightness = Math.sqrt(
+            0.299 * (r * r) +
+            0.587 * (g * g) +
+            0.114 * (b * b)
+        );
+
+        // If dark (< 130), return light pattern; else dark pattern
+        return brightness < 130 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.15)';
     };
 
-    const containerStyle = isStatic ? style : {
-        ...style,
-        transform: `scale(${scale}) scaleX(${direction})`
+    // Dynamic Sizing
+    let transformString = `scale(${scale}) scaleX(${direction})`;
+    // Note: If centered (relative), we don't need translate(-50%, -50%) because Flexbox handles position.
+    // We just need to ensure origin is center for scaling.
+
+    const containerStyle = {
+        position: centered ? 'relative' : 'absolute',
+        left: centered ? 'auto' : `${x}%`,
+        top: centered ? 'auto' : `${y}%`,
+        transform: transformString,
+        transformOrigin: 'center center', // Ensure scaling happens from center
+        zIndex: Math.floor(y), // Depth sorting
+        '--sheep-color': color,
+        '--pattern-color': getContrastPatternColor(color)
     };
+
+    // Icons
+    let StatusIcon = null;
+    if (status === 'sick') StatusIcon = <div className="icon-sick">🤢</div>;
+    else if (status === 'hungry') StatusIcon = <div className="icon-hungry">🍖</div>;
+    else if (status === 'injured') StatusIcon = <div className="icon-injured">🤕</div>;
+    else if (isDead) StatusIcon = <div className="icon-dead">🪦</div>;
+    else if (state === 'eating') StatusIcon = <div className="icon-eating">🥬</div>;
+
+    const isHuman = type === 'GLORY';
+    const eyeClass = isDead ? 'eye-dead' : (status === 'sick' ? 'eye-sick' : 'eye-normal');
+
+    const skinData = visual.skinData;
+    const patternClass = pattern !== 'none' ? `pattern-${pattern}` : '';
 
     if (isDead) {
         return (
-            <div className="sheep-visual-container" style={containerStyle}>
+            <div className={`sheep-visual-container ${animClass} ${statusClass} stage-${healthStage}`} style={containerStyle}>
                 <div className="sheep-grave">🪦</div>
             </div>
         );
     }
 
-    // --- Status Logic ---
-    const isSick = status === 'sick';
-    const isInjured = status === 'injured';
-
-    // Health Stages
-    let healthStage = 'normal';
-    if (health >= 80) healthStage = 'super';
-    else if (health >= 50) healthStage = 'normal';
-    else if (health >= 30) healthStage = 'weak';
-    else healthStage = 'critical';
-
-    const statusClass = isSick ? 'sheep-sick' : (isInjured ? 'sheep-injured' : '');
-    const animClass = (state === 'walking' && !isStatic) ? 'walking' : '';
-
-    // Type Logic
-    const typeClass = `type-${type.toLowerCase()}`;
-    const isHuman = type === 'HUMAN';
-
-    // Eyes logic based on health/status
-    const isSad = isSick || isInjured || healthStage === 'weak' || healthStage === 'critical';
-    const isHappy = healthStage === 'super' && !isSick && !isInjured;
-    const eyeClass = isSad ? 'eye-sad' : (isHappy ? 'eye-happy' : 'eye');
-
-    let StatusIcon = null;
-    if (isInjured) StatusIcon = '🤕';
-    else if (healthStage === 'critical') StatusIcon = '😰';
-    else if (healthStage === 'weak') StatusIcon = '💧';
+    // Custom Image Skin Rendering
+    if (skinData && skinData.type === 'image' && skinData.data?.url) {
+        return (
+            <div className={`sheep-visual-container ${animClass} ${statusClass} ${typeClass} stage-${healthStage}`} style={containerStyle}>
+                {StatusIcon && <div className="status-icon-float">{StatusIcon}</div>}
+                <img
+                    src={skinData.data.url}
+                    alt="sheep-skin"
+                    className="sheep-skin-img"
+                    onError={(e) => { e.target.style.display = 'none'; e.target.nextSibling.style.display = 'block'; }} // Fallback
+                />
+                {/* Fallback CSS Body (Hidden by default unless error) */}
+                <div style={{ display: 'none', width: '100%', height: '100%' }}>
+                    <div className={`sheep-body-group ${patternClass}`}>
+                        <div className="sheep-body"></div>
+                        <div className="sheep-head"></div>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className={`sheep-visual-container ${animClass} ${statusClass} ${typeClass} stage-${healthStage}`} style={containerStyle}>
@@ -70,7 +113,7 @@ export const SheepVisual = ({
             {/* Status Float Icon */}
             {StatusIcon && <div className="status-icon-float">{StatusIcon}</div>}
 
-            <div className="sheep-body-group">
+            <div className={`sheep-body-group ${patternClass}`}>
                 {isHuman ? (
                     // --- HUMAN SHAPE ---
                     <div className="human-structure">
@@ -109,8 +152,8 @@ export const SheepVisual = ({
                             <div className="sheep-head">
                                 <div className="sheep-face">
                                     <div className="sheep-eyes">
-                                        <div className={eyeClass}></div>
-                                        <div className={eyeClass}></div>
+                                        <div className={`eye ${eyeClass}`}></div>
+                                        <div className={`eye ${eyeClass}`}></div>
                                     </div>
                                 </div>
                                 {/* Accessories */}

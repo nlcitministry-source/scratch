@@ -39,19 +39,28 @@
     width: 100%;
     height: 100%;
     transition: transform 0.3s ease;
-    animation: breathe 3s infinite ease-in-out; /* Idle Breathing */
+    animation: breathe 3s infinite ease-in-out;
+    /* Idle Breathing */
 }
 
 @keyframes breathe {
-    0%, 100% { transform: scale(1); }
-    50% { transform: scale(1.02); }
+
+    0%,
+    100% {
+        transform: scale(1);
+    }
+
+    50% {
+        transform: scale(1.02);
+    }
 }
 
 /* Status Filters */
 .sheep-sick .sheep-body,
 .sheep-sick .sheep-head,
 .sheep-sick .sheep-ear,
-.sheep-sick .sheep-leg {
+.sheep-sick .sheep-leg,
+.sheep-sick .sheep-skin-img {
     filter: hue-rotate(90deg) sepia(0.3);
     /* Greenish tint for sick */
 }
@@ -59,7 +68,8 @@
 .sheep-injured .sheep-body,
 .sheep-injured .sheep-head,
 .sheep-injured .sheep-ear,
-.sheep-injured .sheep-leg {
+.sheep-injured .sheep-leg,
+.sheep-injured .sheep-skin-img {
     filter: sepia(0.5) saturate(1.5) hue-rotate(-30deg);
     /* Reddish/Bruised */
 }
@@ -87,7 +97,8 @@
 }
 
 .stage-weak .sheep-body,
-.stage-weak .sheep-head {
+.stage-weak .sheep-head,
+.stage-weak .sheep-skin-img {
     filter: saturate(0.7) brightness(0.95);
 }
 
@@ -98,7 +109,8 @@
 }
 
 .stage-critical .sheep-body,
-.stage-critical .sheep-head {
+.stage-critical .sheep-head,
+.stage-critical .sheep-skin-img {
     filter: grayscale(0.6) brightness(0.9);
 }
 
@@ -604,6 +616,49 @@
     bottom: -5px;
 }
 
+/* ... Existing content ... */
 .walking .human-body {
     animation: walk-bob 0.8s infinite ease-in-out;
+}
+
+/* --- PATTERNS --- */
+.pattern-dots .sheep-body,
+.pattern-dots .sheep-head {
+    background-image: radial-gradient(var(--pattern-color, rgba(0, 0, 0, 0.15)) 15%, transparent 16%);
+    background-size: 8px 8px;
+}
+
+.pattern-stripes .sheep-body,
+.pattern-stripes .sheep-head {
+    background-image: repeating-linear-gradient(45deg,
+            transparent,
+            transparent 5px,
+            var(--pattern-color, rgba(0, 0, 0, 0.15)) 5px,
+            var(--pattern-color, rgba(0, 0, 0, 0.15)) 10px);
+}
+
+
+
+/* --- IMAGE SKINS --- */
+.sheep-skin-img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.2));
+}
+
+@keyframes bounce {
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-3px);
+    }
 }

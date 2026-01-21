@@ -36,11 +36,325 @@ export const GameProvider = ({ children }) => {
         return fallback;
     };
 
+    // ... (Existing state)
     const [sheep, setSheep] = useState([]);
     const [inventory, setInventory] = useState([]);
     const [message, setMessage] = useState(null);
-    const [notificationEnabled, setNotificationEnabled] = useState(false); // NEW: Reminder Setting
+    const [notificationEnabled, setNotificationEnabled] = useState(false);
     const [weather, setWeather] = useState({ type: 'sunny', isDay: true, temp: 25 });
+
+    const [skins, setSkins] = useState([]); // New Skins State
+
+    // ... (Existing useEffects)
+
+    // --- SKINS LOGIC ---
+    const loadSkins = async (userId) => {
+        try {
+            const { data, error } = await supabase
+                .from('sheep_skins')
+                .select('*')
+                .or(`is_public.eq.true,created_by.eq.${userId}`);
+
+            if (error) {
+                // If table doesn't exist yet, just ignore
+                console.warn("Could not load skins (Table might not exist yet)", error);
+                return;
+            }
+            if (data) setSkins(data);
+        } catch (e) { console.error("Load Skins Error", e); }
+    };
+
+    const createSkin = async (name, fileOrUrl) => {
+        if (!lineId) return null;
+        try {
+            let finalUrl = fileOrUrl;
+
+            // 1. Upload if it's a File
+            if (fileOrUrl instanceof File) {
+                const fileExt = fileOrUrl.name.split('.').pop();
+                // Path: userId/timestamp.ext
+                const fileName = `${lineId}/${Date.now()}.${fileExt}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('skins')
+                    .upload(fileName, fileOrUrl);
+
+                if (uploadError) throw uploadError;
+
+                const { data } = supabase.storage
+                    .from('skins')
+                    .getPublicUrl(fileName);
+
+                finalUrl = data.publicUrl;
+            }
+
+            // 2. Insert DB Record
+            const newSkin = {
+                name,
+                type: 'image',
+                data: { url: finalUrl },
+                is_public: false,
+                created_by: lineId
+            };
+            const { data, error } = await supabase
+                .from('sheep_skins')
+                .insert([newSkin])
+                .select()
+                .single();
+
+            if (error) throw error;
+            setSkins(prev => [...prev, data]);
+            return data;
+        } catch (e) {
+            alert("創建失敗: " + e.message);
+            return null;
+        }
+    };
+
+    // --- LIFF & Login Logic ---
+    // ...
+    const handleLoginSuccess = async (profile) => {
+        setIsLoading(true);
+        const { userId, displayName, pictureUrl } = profile;
+        setLineId(userId);
+        localStorage.setItem('sheep_current_session', userId);
+        try { sessionStorage.clear(); } catch (e) { }
+
+        showMessage(`設定羊群中... (Hi, ${displayName})`);
+
+        try {
+            // 0. Load Skins
+            await loadSkins(userId);
+
+            // 1. Fetch User (Settings, Inventory)
+            const { data: existingUser, error: fetchError } = await supabase
+                .from('users')
+                .select('*')
+                .eq('id', userId)
+                .single();
+
+            if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
+
+            // 2. Fetch Sheep (Relational Table) - JOIN with Skins
+            const { data: sheepData, error: sheepError } = await supabase
+                .from('sheep')
+                .select('*, skin_data:sheep_skins(*)')
+                .eq('owner_id', userId);
+
+            if (sheepError) throw sheepError;
+
+            if (existingUser) {
+                if (existingUser.nickname) setNickname(existingUser.nickname);
+                else setNickname(null);
+
+                let finalSheep = [];
+
+                // MIGRATION LOGIC (Legacy JSON -> Relational)
+                if (existingUser.game_data?.sheep?.length > 0 && (!sheepData || sheepData.length === 0)) {
+                    console.log("Migrating Legacy Cloud JSON...");
+                    const oldSheep = existingUser.game_data.sheep;
+                    const rowsToInsert = oldSheep.map(s => ({
+                        owner_id: userId,
+                        name: s.name,
+                        status: s.status,
+                        health: s.health,
+                        care_level: s.careLevel || 0,
+                        spiritual_maturity: s.spiritualMaturity,
+                        visual_data: { x: s.x, y: s.y, angle: s.angle, visual: s.visual, type: s.type },
+                        prayed_count: s.prayedCount || 0,
+                        resurrection_progress: s.resurrectionProgress || 0,
+                        last_prayed_date: s.lastPrayedDate,
+                        note: s.note
+                    }));
+
+                    if (rowsToInsert.length > 0) {
+                        const { data: migrated, error: migErr } = await supabase.from('sheep').insert(rowsToInsert).select();
+                        if (!migErr) finalSheep = migrated;
+                    }
+                } else {
+                    finalSheep = sheepData || [];
+                }
+
+                // Hydrate Sheep
+                const hydratedSheep = finalSheep.map(row => {
+                    const visuals = row.visual_data || {};
+                    const skinData = row.skin_data;
+                    if (skinData) {
+                        visuals.skinData = skinData;
+                        visuals.skinId = skinData.id;
+                    }
+                    return {
+                        id: row.id,
+                        name: row.name,
+                        status: row.status,
+                        health: parseFloat(row.health),
+                        careLevel: parseFloat(row.care_level),
+                        spiritualMaturity: row.spiritual_maturity,
+                        x: visuals.x, y: visuals.y, angle: visuals.angle,
+                        visual: visuals.visual || {},
+                        type: visuals.type || (parseFloat(row.health) >= 80 ? 'STRONG' : 'LAMB'),
+                        skinId: row.skin_id,
+                        prayedCount: row.prayed_count,
+                        resurrectionProgress: row.resurrection_progress,
+                        lastPrayedDate: row.last_prayed_date,
+                        note: row.note,
+                        state: 'idle', direction: 1, message: null, messageTimer: 0
+                    };
+                });
+
+                applyLoadedData({ sheep: hydratedSheep, inventory: existingUser.game_data?.inventory, settings: existingUser.game_data?.settings }, userId);
+                setIsDataLoaded(true);
+                setCurrentUser(displayName);
+                showMessage(`歡迎回來，${existingUser.nickname || displayName}! 👋`);
+
+            } else {
+                // New User Logic
+                const { error: insertError } = await supabase
+                    .from('users')
+                    .insert([{
+                        id: userId,
+                        name: displayName,
+                        avatar: pictureUrl,
+                        nickname: null,
+                        game_data: {}
+                    }]);
+                if (insertError) throw insertError;
+
+                showMessage("歡迎新加入的牧羊人！ 🎉");
+                setSheep([]); setInventory([]);
+                setNickname(null);
+                localStorage.removeItem(`sheep_game_data_${userId}`);
+                setIsDataLoaded(true);
+                setCurrentUser(displayName);
+            }
+        } catch (e) {
+            console.error(e);
+            setIsLoading(false);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    // Save To Cloud
+    const saveToCloud = async (overrides = {}) => {
+        if (!lineId || !isDataLoaded || isLoading) return;
+
+        const userData = {
+            inventory: overrides.inventory || inventory,
+            settings: { notify: overrides.notificationEnabled ?? notificationEnabled },
+            lastSave: Date.now()
+        };
+        const nicknameToSave = overrides.nickname !== undefined ? overrides.nickname : nickname;
+
+        const currentSheep = overrides.sheep || sheep;
+        const persistentSheep = currentSheep.filter(s => s.id && !s.id.toString().startsWith('temp_'));
+
+        const sheepRows = persistentSheep.map(s => ({
+            id: s.id,
+            owner_id: lineId,
+            name: s.name,
+            status: s.status,
+            health: s.health,
+            care_level: s.careLevel,
+            spiritual_maturity: s.spiritualMaturity,
+            visual_data: {
+                x: s.x, y: s.y, angle: s.angle,
+                visual: s.visual,
+                type: s.type
+            },
+            skin_id: s.skinId || null,
+            prayed_count: s.prayedCount,
+            resurrection_progress: s.resurrectionProgress,
+            last_prayed_date: s.lastPrayedDate,
+            note: s.note,
+            updated_at: new Date().toISOString()
+        }));
+
+        const validUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+        const rowsToUpsert = sheepRows.filter(r => validUUID.test(r.id));
+
+        localStorage.setItem(`sheep_game_data_${lineId}`, JSON.stringify({
+            sheep: currentSheep,
+            inventory: userData.inventory,
+            settings: userData.settings,
+            lastSave: Date.now(),
+            nickname: nicknameToSave,
+            name: currentUser
+        }));
+
+        try {
+            await supabase.from('users').upsert({
+                id: lineId,
+                nickname: nicknameToSave,
+                name: currentUser,
+                game_data: userData,
+                last_login: new Date().toISOString()
+            });
+
+            if (rowsToUpsert.length > 0) {
+                await supabase.from('sheep').upsert(rowsToUpsert);
+            }
+        } catch (e) { console.error("Auto-save failed", e); }
+    };
+
+    // ...
+
+    // Adopt Sheep (Updated)
+    const adoptSheep = async (data = {}) => {
+        const { name = '小羊', spiritualMaturity = '', visual, skinId } = data; // visual from modal
+
+        // Optimistic UI
+        const tempId = `temp_${Date.now()}`;
+        // If skinId provided, find it in 'skins' state to render optimistically
+        let skinData = null;
+        if (skinId && skins.length > 0) {
+            skinData = skins.find(s => s.id === skinId);
+        }
+
+        const safeVisual = {
+            ...generateVisuals(), // Fallback randoms
+            ...(visual || {})     // Overrides from modal
+        };
+        // Add skinData to visual for preview
+        if (skinData) safeVisual.skinData = skinData;
+
+        const newSheep = {
+            id: tempId,
+            name, type: 'LAMB',
+            spiritualMaturity,
+            careLevel: 0, health: 100, strength: 0, status: 'healthy',
+            state: 'idle', note: '', prayedCount: 0, lastPrayedDate: null,
+            resurrectionProgress: 0,
+            visual: safeVisual,
+            skinId: skinId || null, // Store ID
+            createdAt: Date.now(),
+            x: Math.random() * 90 + 5, y: Math.random() * 90 + 5,
+            angle: Math.random() * Math.PI * 2, direction: 1
+        };
+        setSheep(prev => [...prev, newSheep]);
+
+        // DB Insert
+        if (lineId && isDataLoaded) {
+            try {
+                const { data: inserted, error } = await supabase.from('sheep').insert([{
+                    owner_id: lineId,
+                    name, status: 'healthy', health: 100,
+                    spiritual_maturity: spiritualMaturity,
+                    visual_data: {
+                        x: newSheep.x, y: newSheep.y, angle: newSheep.angle,
+                        visual: safeVisual, type: 'LAMB'
+                    },
+                    skin_id: skinId || null
+                }]).select().single();
+
+                if (inserted) {
+                    setSheep(prev => prev.map(s => s.id === tempId ? { ...s, id: inserted.id } : s));
+                    // Note: If we need skinData again, we assume it's already in the object from optimistic create
+                    // or next reload picks it up.
+                }
+            } catch (e) { console.error("Adopt sync failed", e); }
+        }
+    };
 
     // ... (Location state omitted for brevity, logic unchanged) ...
 
@@ -161,162 +475,7 @@ export const GameProvider = ({ children }) => {
         }
     };
 
-    const handleLoginSuccess = async (profile) => {
-        setIsLoading(true);
-        const { userId, displayName, pictureUrl } = profile;
-        setLineId(userId);
-        // setCurrentUser(displayName); // MOVED TO END
-        localStorage.setItem('sheep_current_session', userId);
 
-        try {
-            // Clear legacy session storage 
-            sessionStorage.clear();
-        } catch (e) { }
-
-        showMessage(`設定羊群中... (Hi, ${displayName})`);
-
-        try {
-            // 1. Fetch User (Settings, Inventory)
-            const { data: existingUser, error: fetchError } = await supabase
-                .from('users')
-                .select('*')
-                .eq('id', userId)
-                .single();
-
-            if (fetchError && fetchError.code !== 'PGRST116') throw fetchError;
-
-            // 2. Fetch Sheep (Relational Table)
-            const { data: sheepData, error: sheepError } = await supabase
-                .from('sheep')
-                .select('*')
-                .eq('owner_id', userId);
-
-            if (sheepError) throw sheepError;
-
-            if (existingUser) {
-                // Restoration Logic
-                if (existingUser.nickname) setNickname(existingUser.nickname);
-                else setNickname(null);
-
-                // --- MIGRATION CHECK ---
-                // If user has old JSON sheep but NO new relational sheep, migrate them!
-                let finalSheep = [];
-                // Check Cloud Backup OR Local Storage (if Cloud was wiped by race condition)
-                // --- STRICT CLOUD AUTHORITY ---
-
-                // MIGRATION LOGIC (Simplified: Cloud-to-Cloud Only)
-                // We ignore localStorage for migration to prevent duplicating "Zombie" data
-                if (existingUser.game_data?.sheep?.length > 0 && (!sheepData || sheepData.length === 0)) {
-                    console.log("Migrating Legacy Cloud JSON...");
-                    const oldSheep = existingUser.game_data.sheep;
-
-                    const rowsToInsert = oldSheep.map(s => ({
-                        owner_id: userId,
-                        name: s.name,
-                        status: s.status,
-                        health: s.health,
-                        care_level: s.careLevel || 0,
-                        spiritual_maturity: s.spiritualMaturity,
-                        visual_data: {
-                            x: s.x, y: s.y, angle: s.angle,
-                            visual: s.visual,
-                            type: s.type
-                        },
-                        prayed_count: s.prayedCount || 0,
-                        resurrection_progress: s.resurrectionProgress || 0,
-                        last_prayed_date: s.lastPrayedDate,
-                        note: s.note
-                    }));
-
-                    if (rowsToInsert.length > 0) {
-                        const { data: migrated, error: migErr } = await supabase
-                            .from('sheep')
-                            .insert(rowsToInsert)
-                            .select();
-                        if (migErr) console.error("Migration failed", migErr);
-                        else {
-                            console.log("Migration success!");
-                            finalSheep = migrated;
-                        }
-                    }
-                } else {
-                    finalSheep = sheepData || [];
-                }
-
-                // Apply Loaded Data (Calculate Decay based on row updated_at if possible, 
-                // but since we just migrated or loaded, we handle logical hydration)
-                const lastSave = existingUser.game_data?.lastSave || Date.now(); // User-level backup time
-                const loadedInventory = existingUser.game_data?.inventory || [];
-                const loadedSettings = existingUser.game_data?.settings || {};
-
-                // Hydrate Sheep (Convert DB row back to Game Object)
-                const hydratedSheep = finalSheep.map(row => {
-                    const visuals = row.visual_data || {};
-                    return {
-                        id: row.id, // UUID
-                        name: row.name,
-                        status: row.status,
-                        health: parseFloat(row.health),
-                        careLevel: parseFloat(row.care_level),
-                        spiritualMaturity: row.spiritual_maturity,
-                        // Expand Visuals
-                        x: visuals.x, y: visuals.y, angle: visuals.angle,
-                        visual: visuals.visual,
-                        type: visuals.type || (parseFloat(row.health) >= 80 ? 'STRONG' : 'LAMB'),
-                        // Stats
-                        prayedCount: row.prayed_count,
-                        resurrectionProgress: row.resurrection_progress,
-                        lastPrayedDate: row.last_prayed_date,
-                        note: row.note,
-                        // Runtime props
-                        state: 'idle', direction: 1, message: null, messageTimer: 0
-                    };
-                });
-
-                // Apply Decay
-                applyLoadedData({ sheep: hydratedSheep, inventory: loadedInventory, settings: loadedSettings, lastSave }, userId);
-
-                setIsDataLoaded(true);
-                // COMMIT LOGIN
-                setCurrentUser(displayName);
-                showMessage(`歡迎回來，${existingUser.nickname || displayName}! 👋`);
-
-            } else {
-                // New User
-                const { error: insertError } = await supabase
-                    .from('users')
-                    .insert([{
-                        id: userId,
-                        name: displayName,
-                        avatar: pictureUrl,
-                        nickname: null,
-                        game_data: {} // No more sheep here
-                    }]);
-                if (insertError) throw insertError;
-
-                showMessage("歡迎新加入的牧羊人！ 🎉");
-                // New User: Clear everything
-                setSheep([]); setInventory([]);
-                setNickname(null);
-
-                // Clear persistence
-                localStorage.removeItem(`sheep_game_data_${userId}`);
-
-                setIsDataLoaded(true);
-                // COMMIT LOGIN
-                setCurrentUser(displayName);
-            }
-        } catch (e) {
-            alert(`⚠️ Connection Error: ${e.message}`);
-            console.error(e);
-            // If error, do NOT set currentUser, let them try again?
-            // Or set it essentially? 
-            // If we don't set currentUser, App stays on Login screen.
-            // But we might be half-broken.
-        } finally {
-            setIsLoading(false);
-        }
-    };
 
     const logout = async () => {
         await saveToCloud();
@@ -398,77 +557,6 @@ export const GameProvider = ({ children }) => {
         return diffHours;
     };
 
-    const saveToCloud = async (overrides = {}) => {
-        if (!lineId || !isDataLoaded || isLoading) return; // Block save during loading/sync
-
-        // 1. Prepare User Data (Inventory & Settings only)
-        const userData = {
-            inventory: overrides.inventory || inventory,
-            settings: { notify: overrides.notificationEnabled ?? notificationEnabled },
-            lastSave: Date.now()
-        };
-        const nicknameToSave = overrides.nickname !== undefined ? overrides.nickname : nickname;
-
-        // 2. Prepare Sheep Data
-        const currentSheep = overrides.sheep || sheep;
-
-        // Filter out temporary IDs from CLOUD sync (they are handled by adoptSheep's direct insert)
-        const persistentSheep = currentSheep.filter(s => s.id && !s.id.toString().startsWith('temp_'));
-
-        // Map to DB Rows
-        const sheepRows = persistentSheep.map(s => ({
-            id: s.id, // Should be valid UUID
-            owner_id: lineId,
-            name: s.name,
-            status: s.status,
-            health: s.health,
-            care_level: s.careLevel,
-            spiritual_maturity: s.spiritualMaturity,
-            visual_data: {
-                x: s.x, y: s.y, angle: s.angle,
-                visual: s.visual,
-                type: s.type
-            },
-            prayed_count: s.prayedCount,
-            resurrection_progress: s.resurrectionProgress,
-            last_prayed_date: s.lastPrayedDate,
-            note: s.note,
-            updated_at: new Date().toISOString()
-        }));
-
-        const validUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-        const rowsToUpsert = sheepRows.filter(r => validUUID.test(r.id));
-
-        // Update Local Cache (Store EVERYTHING, including temp, so UI doesn't flicker on reload if offline)
-        localStorage.setItem(`sheep_game_data_${lineId}`, JSON.stringify({
-            sheep: currentSheep,
-            inventory: userData.inventory,
-            settings: userData.settings,
-            lastSave: Date.now(),
-            nickname: nicknameToSave,
-            name: currentUser
-        }));
-
-        try {
-            // A. Save User Info
-            await supabase.from('users').upsert({
-                id: lineId,
-                nickname: nicknameToSave,
-                name: currentUser,
-                game_data: userData,
-                last_login: new Date().toISOString()
-            });
-
-            // B. Upsert Existing Sheep (Valid UUIDs only)
-            if (rowsToUpsert.length > 0) {
-                await supabase.from('sheep').upsert(rowsToUpsert);
-            }
-
-            console.log("Cloud Save Success");
-
-        } catch (e) { console.error("Auto-save failed", e); }
-    };
-
     const forceLoadFromCloud = async () => {
         if (!lineId) {
             showMessage("⚠️ 無法連線：使用者未登入");
@@ -542,44 +630,7 @@ export const GameProvider = ({ children }) => {
     }, [lineId]);
 
     // Actions
-    const adoptSheep = async (data = {}) => {
-        const { name = '小羊', spiritualMaturity = '' } = data;
 
-        // Optimistic UI Update (Temp ID)
-        const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-        const visual = generateVisuals();
-        const newSheep = {
-            id: tempId,
-            name, type: 'LAMB',
-            spiritualMaturity,
-            careLevel: 0, health: 100, strength: 0, status: 'healthy',
-            state: 'idle', note: '', prayedCount: 0, lastPrayedDate: null,
-            resurrectionProgress: 0,
-            visual,
-            x: Math.random() * 90 + 5, y: Math.random() * 90 + 5,
-            angle: Math.random() * Math.PI * 2, direction: 1
-        };
-        setSheep(prev => [...prev, newSheep]);
-
-        // Immediate DB Insert to get real UUID
-        if (lineId && isDataLoaded) {
-            try {
-                const { data: inserted, error } = await supabase.from('sheep').insert([{
-                    owner_id: lineId,
-                    name, status: 'healthy', health: 100,
-                    spiritual_maturity: spiritualMaturity,
-                    visual_data: { x: newSheep.x, y: newSheep.y, angle: newSheep.angle, visual, type: 'LAMB' }
-                }]).select().single();
-
-                if (inserted) {
-                    // Replace Temp ID with Real UUID
-                    console.log("Adopt synced, ID:", inserted.id);
-                    setSheep(prev => prev.map(s => s.id === tempId ? { ...s, id: inserted.id } : s));
-                    // The next auto-save will pick up this new valid UUID.
-                }
-            } catch (e) { console.error("Adopt sync failed", e); }
-        }
-    };
 
     const updateSheep = (id, updates) => {
         setSheep(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
@@ -658,9 +709,10 @@ export const GameProvider = ({ children }) => {
     return (
         <GameContext.Provider value={{
             currentUser, nickname, setNickname, lineId, isAdmin,
-            sheep, inventory, message, weather,
+            isLoading, // Exposed for App.jsx loading screen
+            sheep, skins, inventory, message, weather, // skins exposed
             location, updateUserLocation,
-            adoptSheep, updateSheep,
+            adoptSheep, updateSheep, createSkin, // createSkin exposed
             loginWithLine, logout,
             prayForSheep, deleteSheep, deleteMultipleSheep,
             saveToCloud, forceLoadFromCloud, // Exposed

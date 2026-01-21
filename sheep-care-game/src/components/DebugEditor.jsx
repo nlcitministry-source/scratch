@@ -141,7 +141,7 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                 </div>
 
                 <div className="editor-form">
-                    <div className="form-group">
+                    <div className="form-group" onClick={() => !isEditing && setIsEditing(true)} style={{ cursor: !isEditing ? 'pointer' : 'default' }} title={!isEditing ? "點擊編輯" : ""}>
                         <label>{isDead ? '墓誌銘 (姓名)' : '姓名'}</label>
                         <input
                             type="text"
@@ -150,6 +150,7 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                             maxLength={10}
                             placeholder="名字..."
                             disabled={!isEditing}
+                            style={{ pointerEvents: !isEditing ? 'none' : 'auto' }} // Ensure click passes to parent
                         />
                     </div>
 
@@ -171,13 +172,13 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                         </div>
                     </div>
 
-                    <div className="form-group">
+                    <div className="form-group" onClick={() => !isEditing && setIsEditing(true)} style={{ cursor: !isEditing ? 'pointer' : 'default' }} title={!isEditing ? "點擊編輯" : ""}>
                         <label>靈程 (Spiritual Maturity)</label>
                         <select
                             value={sLevel}
                             onChange={(e) => setSLevel(e.target.value)}
                             disabled={!isEditing}
-                            style={{ width: '100%', padding: '8px', borderRadius: '8px', marginBottom: '5px' }}
+                            style={{ width: '100%', padding: '8px', borderRadius: '8px', marginBottom: '5px', pointerEvents: !isEditing ? 'none' : 'auto' }}
                         >
                             <option value="">-- 請選擇 --</option>
                             <option value="新朋友">新朋友</option>
@@ -196,25 +197,38 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                         {isAdmin && !isDead && (
                             <div style={{ marginTop: '10px', padding: '10px', background: '#e0f7fa', borderRadius: '8px', border: '1px dashed #00bcd4' }}>
                                 <label style={{ display: 'block', marginBottom: '5px', fontSize: '0.85rem', color: '#006064' }}>🔧 管理員調整: {Math.round(target.health)}%</label>
-                                <input
-                                    type="range"
-                                    min="1"
-                                    max="100"
-                                    value={target.health}
-                                    onChange={(e) => updateSheep(target.id, { health: Number(e.target.value) })}
-                                    style={{ width: '100%', cursor: 'pointer' }}
-                                />
+                                <div style={{ display: 'flex', gap: '5px', alignItems: 'center' }}>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="100"
+                                        value={target.health}
+                                        onChange={(e) => updateSheep(target.id, { health: Number(e.target.value) })}
+                                        style={{ flex: 1, cursor: 'pointer' }}
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => updateSheep(target.id, { health: 0 })}
+                                        style={{
+                                            padding: '2px 8px', fontSize: '0.8rem', background: '#ff5252', color: 'white',
+                                            border: 'none', borderRadius: '4px', cursor: 'pointer', whiteSpace: 'nowrap'
+                                        }}
+                                        title="直接歸零 (測試死亡)"
+                                    >
+                                        💀 歸零
+                                    </button>
+                                </div>
                             </div>
                         )}
                     </div>
 
-                    <div className="form-group">
+                    <div className="form-group" onClick={() => !isEditing && setIsEditing(true)} style={{ cursor: !isEditing ? 'pointer' : 'default' }} title={!isEditing ? "點擊編輯" : ""}>
                         <label>備註 / 追憶</label>
                         <textarea
                             value={note}
                             onChange={(e) => setNote(e.target.value)}
                             rows={3}
-                            style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #ddd' }}
+                            style={{ width: '100%', padding: '8px', borderRadius: '8px', border: '1px solid #ddd', pointerEvents: !isEditing ? 'none' : 'auto' }}
                             placeholder={isDead ? "寫下對牠的負擔..." : "記錄這隻小羊的狀況..."}
                             disabled={!isEditing}
                         />
@@ -324,22 +338,10 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
                     ) : null}
 
                     {/* Main Actions (Hide if any confirm is open) */}
+                    {/* Main Actions (Hide if any confirm is open) */}
                     {!deleteConfirmOpen && !resetConfirmOpen && (
                         <div style={{ display: 'flex', gap: '8px' }}>
-                            {!isEditing ? (
-                                <button
-                                    onClick={() => setIsEditing(true)}
-                                    style={{
-                                        flex: 1.5, height: '36px', padding: '0 5px',
-                                        background: '#2196f3',
-                                        color: 'white', border: 'none', borderRadius: '8px',
-                                        cursor: 'pointer',
-                                        whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.9rem'
-                                    }}
-                                >
-                                    變更資料
-                                </button>
-                            ) : (
+                            {isEditing && (
                                 <>
                                     <button
                                         onClick={handleSave}
