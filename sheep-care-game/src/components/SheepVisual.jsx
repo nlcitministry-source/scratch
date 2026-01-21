@@ -51,8 +51,10 @@ export const SheepVisual = ({
     let transformString = `scale(${scale}) scaleX(${direction})`;
 
     // Sick Effect: Lying Down (Rotate 90deg)
+    // Sick Effect: Lying Down (Rotate 90deg)
     let rotateString = '';
-    if (status === 'sick') {
+    // Only rotate if NOT static (i.e. on the field)
+    if (status === 'sick' && !isStatic) {
         rotateString = 'rotate(90deg)';
         transformString += ' translateY(10px)'; // Adjust position to look grounded
     }

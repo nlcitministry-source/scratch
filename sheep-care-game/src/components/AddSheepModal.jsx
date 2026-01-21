@@ -135,10 +135,16 @@ export const AddSheepModal = ({ onConfirm, onCancel, editingSheep = null }) => {
     };
 
     const handleCreateSkin = async () => {
-        if (!newSkinName) return;
+        if (!newSkinName) {
+            alert("請輸入造型名稱！");
+            return;
+        }
         // Logic: specific file > specific url input
         const payload = newSkinFile || newSkinUrl;
-        if (!payload) return;
+        if (!payload) {
+            alert("請上傳圖片或輸入網址！");
+            return;
+        }
 
         if (createSkin) {
             const newSkin = await createSkin(newSkinName, payload);

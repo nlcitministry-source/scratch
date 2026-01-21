@@ -93,7 +93,7 @@ export const GameProvider = ({ children }) => {
                 name,
                 type: 'image',
                 data: { url: finalUrl },
-                is_public: false,
+                is_public: lineId === 'admin', // Admin uploads are public by default
                 created_by: lineId
             };
             const { data, error } = await supabase
