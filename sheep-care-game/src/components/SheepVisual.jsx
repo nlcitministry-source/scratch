@@ -1,9 +1,9 @@
 
-import React from 'react';
+import { SheepSVG } from './SheepSVG';
 import './SheepVisual.css';
 
 export const SheepVisual = ({
-    x, y, state, direction,
+    x, y, state, direction, isReversing,
     status, visual = {},
     health = 100,
     type = 'LAMB', // Default to LAMB
@@ -17,7 +17,7 @@ export const SheepVisual = ({
     const { color = '#ffffff', accessory = 'none', pattern = 'none' } = visual || {};
 
     // State & Animation Classes
-    const isMoving = state === 'move';
+    const isMoving = state === 'walking';
     const animClass = isMoving ? 'anim-bounce' : 'anim-breathe';
     const statusClass = status !== 'healthy' ? `status-${status}` : '';
     const typeClass = type === 'GLORY' ? 'type-gold' : (type === 'HORNED' ? 'type-horned' : '');
@@ -43,21 +43,11 @@ export const SheepVisual = ({
             0.114 * (b * b)
         );
 
-        // If dark (< 130), return light pattern; else dark pattern
         return brightness < 130 ? 'rgba(255, 255, 255, 0.3)' : 'rgba(0, 0, 0, 0.15)';
     };
 
     // Dynamic Sizing
-    let transformString = `scale(${scale}) scaleX(${direction})`;
-
-    // Sick Effect: Lying Down (Rotate 90deg)
-    // Sick Effect: Lying Down (Rotate 90deg)
-    let rotateString = '';
-    // Only rotate if NOT static (i.e. on the field)
-    if (status === 'sick' && !isStatic) {
-        rotateString = 'rotate(90deg)';
-        transformString += ' translateY(10px)'; // Adjust position to look grounded
-    }
+    let transformString = `scale(${scale}) scaleX(${direction || 1})`;
 
     // Note: If centered (relative), we don't need translate(-50%, -50%) because Flexbox handles position.
     // We just need to ensure origin is center for scaling.
@@ -66,37 +56,28 @@ export const SheepVisual = ({
         position: centered ? 'relative' : 'absolute',
         left: centered ? 'auto' : `${x}%`,
         top: centered ? 'auto' : `${y}%`,
-        transform: `${transformString} ${rotateString}`,
-        transformOrigin: 'center center', // Ensure scaling happens from center
-        zIndex: Math.floor(y), // Depth sorting
-        '--sheep-color': color,
-        '--pattern-color': getContrastPatternColor(color)
+        transform: `${transformString}`,
+        transformOrigin: 'bottom center', // Ensure scaling happens from bottom
+        zIndex: Math.floor(y || 0), // Depth sorting
+        width: '100px', // Standardize SVG container
+        height: '100px',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'flex-end', // Align to bottom
+        // pointerEvents: 'auto' // Default is auto, removing 'none' allows interaction
     };
 
     // Icons
     let StatusIcon = null;
-    if (status === 'sick') StatusIcon = <div className="icon-sick">🤢</div>;
-    else if (status === 'hungry') StatusIcon = <div className="icon-hungry">🍖</div>;
-    else if (status === 'injured') StatusIcon = <div className="icon-injured">🤕</div>;
-    else if (isDead) StatusIcon = <div className="icon-dead">🪦</div>;
-    else if (state === 'eating') StatusIcon = <div className="icon-eating">🥬</div>;
+    // Fallback for Injured (No SVG state yet)
+    if (status === 'injured') StatusIcon = <div className="icon-injured">🤕</div>;
 
     const isHuman = type === 'GLORY';
-    const eyeClass = isDead ? 'eye-dead' : (status === 'sick' ? 'eye-sick' : 'eye-normal');
-
     const skinData = visual.skinData;
     const patternClass = pattern !== 'none' ? `pattern-${pattern}` : '';
 
-    if (isDead) {
-        return (
-            <div className={`sheep-visual-container ${animClass} ${statusClass} stage-${healthStage}`} style={containerStyle}>
-                <div className="sheep-grave">🪦</div>
-            </div>
-        );
-    }
-
-    // Custom Image Skin Rendering
-    if (skinData && skinData.type === 'image' && skinData.data?.url) {
+    // Custom Image Skin Rendering (Only if ALIVE)
+    if (!isDead && skinData && skinData.type === 'image' && skinData.data?.url) {
         return (
             <div className={`sheep-visual-container ${animClass} ${statusClass} ${typeClass} stage-${healthStage}`} style={containerStyle}>
                 {StatusIcon && <div className="status-icon-float">{StatusIcon}</div>}
@@ -108,81 +89,63 @@ export const SheepVisual = ({
                 />
                 {/* Fallback CSS Body (Hidden by default unless error) */}
                 <div style={{ display: 'none', width: '100%', height: '100%' }}>
-                    <div className={`sheep-body-group ${patternClass}`}>
-                        <div className="sheep-body"></div>
-                        <div className="sheep-head"></div>
-                    </div>
+                    <SheepSVG
+                        color={color}
+                        isSick={status === 'sick'}
+                        isDead={false}
+                    />
                 </div>
             </div>
         );
     }
 
+    // Default Render
     return (
-        <div className={`sheep-visual-container ${animClass} ${statusClass} ${typeClass} stage-${healthStage}`} style={containerStyle}>
+        <div style={containerStyle}>
+            {/* Status Float Icon - Only for non-SVG statuses (Injured) */}
+            {StatusIcon && <div className="status-icon-float" style={{ position: 'absolute', top: 0, zIndex: 10 }}>{StatusIcon}</div>}
 
-            {/* Status Float Icon */}
-            {StatusIcon && <div className="status-icon-float">{StatusIcon}</div>}
-
-            <div className={`sheep-body-group ${patternClass}`}>
-                {isHuman ? (
-                    // --- HUMAN SHAPE ---
+            {isHuman && !isDead ? (
+                // --- HUMAN SHAPE (Legacy CSS for now) ---
+                <div className={`sheep-visual-container ${animClass} ${statusClass} ${typeClass}`} style={{ position: 'static' }}>
                     <div className="human-structure">
                         <div className="human-body"></div>
                         <div className="human-head">
                             <div className="sheep-face">
                                 <div className="sheep-eyes">
-                                    <div className={eyeClass}></div>
-                                    <div className={eyeClass}></div>
+                                    <div className="eye-normal"></div>
+                                    <div className="eye-normal"></div>
                                 </div>
                             </div>
-                            {/* Human Accessories might need adjustment, keeping basic for now */}
-                            {accessory === 'tie_red' && <div className="acc-tie acc-tie-red" style={{ bottom: '-2px', left: '6px' }}></div>}
-                            {accessory === 'tie_blue' && <div className="acc-tie acc-tie-blue" style={{ bottom: '-2px', left: '6px' }}></div>}
                         </div>
                         <div className="human-arm arm-l"></div>
                         <div className="human-arm arm-r"></div>
                         <div className="human-leg leg-l"></div>
                         <div className="human-leg leg-r"></div>
-                        {/* Halo for 'Glory' aspect */}
                         <div className="human-halo"></div>
                     </div>
-                ) : (
-                    // --- SHEEP SHAPE (Standard) ---
-                    <>
-                        <div className="sheep-leg leg-fl"></div>
-                        <div className="sheep-leg leg-fr"></div>
-                        <div className="sheep-leg leg-bl"></div>
-                        <div className="sheep-leg leg-br"></div>
-                        <div className="sheep-body"></div>
-
-                        <div className="sheep-head-group">
-                            <div className="sheep-ear ear-left"></div>
-                            <div className="sheep-ear ear-right"></div>
-
-                            <div className="sheep-head">
-                                <div className="sheep-face">
-                                    <div className="sheep-eyes">
-                                        <div className={`eye ${eyeClass}`}></div>
-                                        <div className={`eye ${eyeClass}`}></div>
-                                    </div>
-                                </div>
-                                {/* Accessories */}
-                                {accessory === 'tie_red' && <div className="acc-tie acc-tie-red"></div>}
-                                {accessory === 'tie_blue' && <div className="acc-tie acc-tie-blue"></div>}
-                                {accessory === 'flower' && <div className="acc-flower">🌸</div>}
-                                {accessory === 'scarf_green' && <div className="acc-scarf"></div>}
-                            </div>
-                            {/* Horns for Strong Sheep */}
-                            {type === 'STRONG' && (
-                                <>
-                                    <div className="ram-horn horn-left"></div>
-                                    <div className="ram-horn horn-right"></div>
-                                </>
-                            )}
-                        </div>
-                    </>
-                )}
-            </div>
+                </div>
+            ) : (
+                // --- SVG SHEEP ---
+                <SheepSVG
+                    color={color}
+                    patternColor={getContrastPatternColor(color)}
+                    faceColor={visual.faceColor}
+                    isSick={status === 'sick'}
+                    isDead={status === 'dead'}
+                    isMoving={state === 'walking'} // Mapped 'walking' state correctly? Check gameLogic. Yes, 'walking'. Old code said 'move'? Check gameLogic.
+                    // Wait, gameLogic uses 'walking'. SheepVisual used 'move'. 
+                    // Let's check SheepVisual line 20: const isMoving = state === 'move';
+                    // The old code had inconsistent state names? 
+                    // GameLogic uses 'walking'. SheepVisual checks 'move'.
+                    // I should fix isMoving too.
+                    direction={direction}
+                    isSleeping={state === 'sleep'}
+                    isReversing={isReversing}
+                    accessory={accessory}
+                    pattern={pattern}
+                />
+            )}
         </div>
     );
 };

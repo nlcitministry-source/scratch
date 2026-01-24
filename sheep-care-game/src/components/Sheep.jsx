@@ -1,16 +1,40 @@
-
 import React from 'react';
 import { SheepVisual } from './SheepVisual';
 import { SHEEP_TYPES } from '../data/sheepData';
 
 export const Sheep = React.memo(({ sheep, onPray, onSelect }) => {
     const isGolden = sheep.type === 'GOLDEN';
+    const [showName, setShowName] = React.useState(false);
 
     // Map y (0-100) to bottom % (25% base to shift up, max ~95%)
-    const bottomPos = 25 + (sheep.y || 0) * 0.7;
-    // Scale down as they go "back" (higher y). 
-    const depthScale = 1.0 - ((sheep.y || 0) / 300);
+    // Map y (0-100) to bottom % (0% base to allow full front access, max ~95%)
+    const bottomPos = (sheep.y || 0) * 0.95;
+    // Scale down as they go "back" (higher y) -> Wait, "back" is lower Y in screen coords? 
+    // No, standard web coords: 0 is top, 100 is bottom.
+    // In this game: "Top" of screen is "Far away". "Bottom" is "Close".
+    // So Y=0 is Far, Y=100 is Close.
+    // Scale should be SMALLER at Y=0, LARGER at Y=100.
+    // The previous code: `1.0 - (y / 300)` means at y=0 scale=1, at y=100 scale=0.66.
+    // THIS IS BACKWARDS TOO! Far objects should be smaller.
+    // Fix Scale: 0.6 + (y / 200). (At 0 -> 0.6. At 100 -> 1.1)
+
+    const depthScale = 1.1 - ((sheep.y || 0) / 200);
     const zIdx = Math.floor(1000 - (sheep.y || 0));
+
+    const handleInteract = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Toggle name visibility
+        setShowName(prev => {
+            if (!prev) {
+                // Determine auto-hide duration
+                setTimeout(() => setShowName(false), 3000);
+                return true;
+            }
+            return false; // Toggle off if clicked again
+        });
+    };
 
     return (
         <div
@@ -19,17 +43,30 @@ export const Sheep = React.memo(({ sheep, onPray, onSelect }) => {
                 left: `${sheep.x}%`,
                 bottom: `${bottomPos}%`,
                 position: 'absolute',
+                width: '100px', // Explicit width for centering
+                height: '100px',
+                marginLeft: '-50px', // Center the wrapper on the x-coordinate
                 transition: sheep.status === 'dead' ? 'none' : 'left 0.5s linear, bottom 0.5s linear',
                 zIndex: zIdx,
                 transform: `scale(${depthScale})`,
                 transformOrigin: 'bottom center'
             }}
         >
-            {/* Name Tag */}
-            <div className="sheep-name-tag">
-                {sheep.name}
-                {isGolden && ' 🌟'}
-            </div>
+            {/* Name Tag - Only Show when toggled */}
+            {showName && (
+                <div className="sheep-name-tag" style={{
+                    position: 'absolute',
+                    top: '0px', // Closer to head
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    zIndex: 100,
+                    whiteSpace: 'nowrap',
+                    pointerEvents: 'none' // Click through to sheep
+                }}>
+                    {sheep.name}
+                    {isGolden && ' 🌟'}
+                </div>
+            )}
 
             {/* Speech Bubble (Emotional Blackmail) */}
             {sheep.message && (
@@ -41,13 +78,11 @@ export const Sheep = React.memo(({ sheep, onPray, onSelect }) => {
             {/* Visual Container (Flippable) */}
             <div
                 style={{
-                    transform: `scaleX(${sheep.direction})`,
-                    cursor: 'pointer'
+                    cursor: 'pointer',
+                    width: '100%',
+                    height: '100%'
                 }}
-                onClick={(e) => {
-                    e.preventDefault();
-                    onSelect(sheep);
-                }}
+                onClick={handleInteract}
             >
                 <SheepVisual
                     type={sheep.type}
@@ -55,6 +90,9 @@ export const Sheep = React.memo(({ sheep, onPray, onSelect }) => {
                     status={sheep.status}
                     visual={sheep.visual}
                     health={sheep.health}
+                    direction={sheep.direction}
+                    isReversing={sheep.isReversing}
+                    centered={true} // Fill wrapper relative
                 />
             </div>
 
@@ -80,11 +118,8 @@ export const Sheep = React.memo(({ sheep, onPray, onSelect }) => {
     if (prev.type !== next.type) return false;
     if (prev.name !== next.name) return false;
 
-    // Deep compare visual if needed, but usually reference stability is enough if immutable
-    // If using new object every tick for 'visual', we might need deep check or ensure stable ref in logic
-    // For now, assume visual rarely changes structure
+    // Deep compare visual if needed
     if (prev.visual !== next.visual) {
-        // Check internal props if distinct object reference
         if (JSON.stringify(prev.visual) !== JSON.stringify(next.visual)) return false;
     }
 

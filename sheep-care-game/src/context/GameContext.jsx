@@ -2,7 +2,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { createClient } from '@supabase/supabase-js';
 import { SHEEP_TYPES } from '../data/sheepData';
-import { sanitizeSheep, calculateTick, generateVisuals, getSheepMessage, calculateSheepState } from '../utils/gameLogic';
+import { sanitizeSheep, calculateTick, generateVisuals, getSheepMessage, calculateSheepState, calculateOfflineDecay } from '../utils/gameLogic';
 import { initDB, getData, saveData, clearData } from '../utils/db';
 
 const GameContext = createContext();
@@ -383,10 +383,14 @@ export const GameProvider = ({ children }) => {
             visual: safeVisual,
             skinId: skinId || null, // Store ID
             createdAt: Date.now(),
-            x: Math.random() * 90 + 5, y: Math.random() * 90 + 5,
+            x: Math.random() * 60 + 20, y: Math.random() * 60 + 20,
             angle: Math.random() * Math.PI * 2, direction: 1
         };
-        setSheep(prev => [...prev, newSheep]);
+        setSheep(prev => {
+            const next = [...prev, newSheep];
+            saveToCloud({ sheep: next }).catch(e => console.error("Auto-save failed", e));
+            return next;
+        });
 
         // DB Insert
         if (lineId && isDataLoaded) {
@@ -567,30 +571,8 @@ export const GameProvider = ({ children }) => {
             })
             .filter(s => s && (s.type && SHEEP_TYPES[s.type] || s.health >= 0)) // Relaxed check
             .map(s => {
-                if (s.status === 'dead') return s;
-
-                // Decay Logic
-                let ratePerHour = 0.541; // Normal (~13%/day)
-
-                // Prayer Protection Check (Offline)
-                const todayStr = new Date().toDateString();
-                const isProtected = s.lastPrayedDate === todayStr;
-
-                if (s.status === 'sick') ratePerHour = 0.833; // Sick (~20%/day)
-                else if (isProtected) ratePerHour = 0.25; // Protected (~6%/day) - User Request
-                else if (s.status === 'injured') ratePerHour = 0.708; // Injured (~17%/day)
-
-                const decayAmount = diffHours * ratePerHour;
-
-                // Decay
-                let rawHealth = s.status === 'dead' ? 0 : (s.health - decayAmount);
-
-                // Use Helper for consistent state logic
-                const { health: newHealth, status: newStatus, type: newType } = calculateSheepState(rawHealth, s.status);
-
-                let newCare = s.careLevel;
-
-                return sanitizeSheep({ ...s, health: newHealth, status: newStatus, type: newType, careLevel: newCare });
+                // Use Centralized Logic
+                return calculateOfflineDecay(s, diffHours);
             });
 
         setSheep(decaySheep);
@@ -647,9 +629,7 @@ export const GameProvider = ({ children }) => {
         if (!lineId || !isDataLoaded) return;
 
         const handleUnload = () => {
-            // User Request: Clear cache on exit
-            localStorage.removeItem('sheep_current_session');
-            if (lineId) localStorage.removeItem(`sheep_game_data_${lineId}`);
+            // Keep local data for safety
         };
 
         const handleSave = () => {
@@ -688,7 +668,7 @@ export const GameProvider = ({ children }) => {
         if (!lineId) return;
         const tick = setInterval(() => {
             setSheep(prev => prev.filter(s => s).map(s => {
-                const updated = calculateTick(s);
+                const updated = calculateTick(s, prev); // Pass 'prev' (all sheep) for flocking
                 if (updated.status === 'dead' && s.status !== 'dead') {
                     showMessage(`🕊️ ${s.name} 不幸離世了...`);
                 }
@@ -702,72 +682,90 @@ export const GameProvider = ({ children }) => {
 
 
     const updateSheep = (id, updates) => {
-        setSheep(prev => prev.map(s => s.id === id ? { ...s, ...updates } : s));
+        setSheep(prev => {
+            const next = prev.map(s => s.id === id ? { ...s, ...updates } : s);
+            saveToCloud({ sheep: next }).catch(console.error);
+            return next;
+        });
     };
 
     const isAdmin = lineId === 'admin';
 
     const prayForSheep = (id) => {
         const today = new Date().toDateString();
-        setSheep(prev => prev.map(s => {
-            if (s.id !== id) return s;
-            if (s.status === 'dead') {
-                const todayDate = new Date(today);
-                const lastDate = s.lastPrayedDate ? new Date(s.lastPrayedDate) : null;
-                let diffDays = -1;
-                if (lastDate) {
-                    diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24));
-                }
-                const isContinuous = diffDays === 1 || diffDays === -1;
+        setSheep(prev => {
+            const nextState = prev.map(s => {
+                if (s.id !== id) return s;
+                if (s.status === 'dead') {
+                    const todayDate = new Date(today);
+                    const lastDate = s.lastPrayedDate ? new Date(s.lastPrayedDate) : null;
+                    let diffDays = -1;
+                    if (lastDate) {
+                        diffDays = Math.floor((todayDate - lastDate) / (1000 * 60 * 60 * 24));
+                    }
+                    const isContinuous = diffDays === 1 || diffDays === -1;
 
-                // Admin Bypass: Allow unlimited resurrection progress per day if needed? 
-                // User requirement said "Unlimited Prayers", usually implies the daily limit.
-                // Let's allow Admin to spam resurrection too if they want
-                if (!isAdmin && diffDays === 0) {
-                    showMessage("今天已經為這隻小羊禱告過了，請明天再來！🙏");
+                    // Admin Bypass: Allow unlimited resurrection progress per day if needed? 
+                    // User requirement said "Unlimited Prayers", usually implies the daily limit.
+                    // Let's allow Admin to spam resurrection too if they want
+                    if (!isAdmin && diffDays === 0) {
+                        showMessage("今天已經為這隻小羊禱告過了，請明天再來！🙏");
+                        return s;
+                    }
+
+                    let newProgress = (isContinuous || isAdmin) ? (s.resurrectionProgress || 0) + 1 : 1;
+
+                    if (newProgress >= 5) {
+                        showMessage(`✨ 奇蹟發生了！${s.name} 復活了！`);
+                        return {
+                            ...s, status: 'healthy', health: 100, type: 'LAMB', careLevel: 0,
+                            resurrectionProgress: 0, lastPrayedDate: today, prayedCount: 0
+                        };
+                    } else {
+                        const statusMsg = (!isAdmin && diffDays > 1) ? "禱告中斷了，重新開始..." : "迫切認領禱告進行中...";
+                        showMessage(`🙏 ${statusMsg} (${newProgress}/5)`);
+                        return { ...s, resurrectionProgress: newProgress, lastPrayedDate: today };
+                    }
+                }
+
+                let count = (s.lastPrayedDate === today) ? s.prayedCount : 0;
+                if (!isAdmin && count >= 3) {
+                    showMessage("這隻小羊今天已經接受過 3 次禱告了，讓牠休息一下吧！🙏");
                     return s;
                 }
+                const rawNewHealth = Math.min(100, s.health + 6);
 
-                let newProgress = (isContinuous || isAdmin) ? (s.resurrectionProgress || 0) + 1 : 1;
+                // Use Centralized Helper to update Status & Type based on new Health
+                const { health, status, type } = calculateSheepState(rawNewHealth, s.status);
 
-                if (newProgress >= 5) {
-                    showMessage(`✨ 奇蹟發生了！${s.name} 復活了！`);
-                    return {
-                        ...s, status: 'healthy', health: 100, type: 'LAMB', careLevel: 0,
-                        resurrectionProgress: 0, lastPrayedDate: today, prayedCount: 0
-                    };
-                } else {
-                    const statusMsg = (!isAdmin && diffDays > 1) ? "禱告中斷了，重新開始..." : "迫切認領禱告進行中...";
-                    showMessage(`🙏 ${statusMsg} (${newProgress}/5)`);
-                    return { ...s, resurrectionProgress: newProgress, lastPrayedDate: today };
-                }
-            }
+                const newCare = s.careLevel + 10;
 
-            let count = (s.lastPrayedDate === today) ? s.prayedCount : 0;
-            if (!isAdmin && count >= 3) {
-                showMessage("這隻小羊今天已經接受過 3 次禱告了，讓牠休息一下吧！🙏");
-                return s;
-            }
-            const rawNewHealth = Math.min(100, s.health + 6);
+                return {
+                    ...s, status, health, type, careLevel: newCare,
+                    lastPrayedDate: today, prayedCount: count + 1
+                };
+            });
 
-            // Use Centralized Helper to update Status & Type based on new Health
-            const { health, status, type } = calculateSheepState(rawNewHealth, s.status);
-
-            const newCare = s.careLevel + 10;
-
-            return {
-                ...s, status, health, type, careLevel: newCare,
-                lastPrayedDate: today, prayedCount: count + 1
-            };
-        }));
+            // Immediate Save
+            saveToCloud({ sheep: nextState }).catch(e => console.error(e));
+            return nextState;
+        });
     };
 
     const deleteSheep = async (id) => {
-        setSheep(prev => prev.filter(s => s.id !== id));
+        setSheep(prev => {
+            const next = prev.filter(s => s.id !== id);
+            saveToCloud({ sheep: next }).catch(console.error);
+            return next;
+        });
         if (lineId) await supabase.from('sheep').delete().eq('id', id);
     };
     const deleteMultipleSheep = async (ids) => {
-        setSheep(prev => prev.filter(s => !ids.includes(s.id)));
+        setSheep(prev => {
+            const next = prev.filter(s => !ids.includes(s.id));
+            saveToCloud({ sheep: next }).catch(console.error);
+            return next;
+        });
         if (lineId) await supabase.from('sheep').delete().in('id', ids);
     };
 
@@ -788,7 +786,8 @@ export const GameProvider = ({ children }) => {
             saveToCloud, forceLoadFromCloud, // Exposed
             notificationEnabled, toggleNotification, // Exposed
             updateNickname, // Exposed
-            settings, updateSetting // Exposed Settings
+            settings, updateSetting, // Exposed Settings
+            setWeather // Exposed for Admin Control
         }}>
             {children}
         </GameContext.Provider>

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
 import { SheepVisual } from './SheepVisual'; // Import for preview
-import { generateVisuals } from '../utils/gameLogic';
+import { generateVisuals, parseMaturity } from '../utils/gameLogic';
 
 const COLORS = [
     { name: '雪白', value: '#f5f5f5' },
@@ -32,6 +32,7 @@ export const AddSheepModal = ({ onConfirm, onCancel, editingSheep = null }) => {
 
     // Basic Info
     const [name, setName] = useState(editingSheep?.name || '小羊');
+    const [note, setNote] = useState(editingSheep?.note || '');
     const [spiritualMaturity, setSpiritualMaturity] = useState('');
     const [maturityStage, setMaturityStage] = useState('學習中');
 
@@ -55,14 +56,9 @@ export const AddSheepModal = ({ onConfirm, onCancel, editingSheep = null }) => {
     // Load initial maturity strings
     useEffect(() => {
         if (editingSheep?.spiritualMaturity) {
-            const mat = editingSheep.spiritualMaturity;
-            const match = mat.match(/^(.+?)(?:\s*\((.+)\))?$/);
-            if (match) {
-                setSpiritualMaturity(match[1]);
-                setMaturityStage(match[2] || '學習中');
-            } else {
-                setSpiritualMaturity(mat); // Fallback if no brackets
-            }
+            const { level, stage } = parseMaturity(editingSheep.spiritualMaturity);
+            setSpiritualMaturity(level);
+            setMaturityStage(stage || '學習中');
         }
     }, [editingSheep]);
 
@@ -128,6 +124,7 @@ export const AddSheepModal = ({ onConfirm, onCancel, editingSheep = null }) => {
 
         onConfirm({
             name: name.trim(), // Trim Name
+            note: note ? note.trim() : '',
             spiritualMaturity: finalMaturity,
             ...finalVisualData
         });
@@ -409,6 +406,18 @@ export const AddSheepModal = ({ onConfirm, onCancel, editingSheep = null }) => {
                                                 </select>
                                             </div>
                                         )}
+                                    </div>
+                                    <div style={{ marginTop: '10px' }}>
+                                        <label style={{ fontSize: '0.9rem' }}>備註</label>
+                                        <textarea
+                                            value={note}
+                                            onChange={e => setNote(e.target.value)}
+                                            placeholder="記錄這隻小羊的故事..."
+                                            style={{
+                                                width: '100%', padding: '8px', border: '1px solid #ccc',
+                                                borderRadius: '5px', resize: 'vertical', minHeight: '60px'
+                                            }}
+                                        />
                                     </div>
                                 </>
                             )}

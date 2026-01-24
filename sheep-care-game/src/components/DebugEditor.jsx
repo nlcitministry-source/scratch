@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useGame } from '../context/GameContext';
-import { calculateSheepState } from '../utils/gameLogic';
+import { calculateSheepState, parseMaturity } from '../utils/gameLogic';
 
 export const DebugEditor = ({ selectedSheepId, onClose }) => {
     const { sheep, updateSheep, prayForSheep, deleteSheep, forceLoadFromCloud, isAdmin } = useGame();
@@ -29,15 +29,10 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
             setName(target.name);
             setNote(target.note || '');
             // Parse "Level (Stage)" or just "Level"
-            const mat = target.spiritualMaturity || '';
-            const match = mat.match(/^(.+?)(?:\s*\((.+)\))?$/);
-            if (match) {
-                setSLevel(match[1] || '');
-                setSStage(match[2] || '');
-            } else {
-                setSLevel(mat);
-                setSStage('');
-            }
+            // Parse "Level (Stage)" or just "Level"
+            const { level, stage } = parseMaturity(target.spiritualMaturity);
+            setSLevel(level);
+            setSStage(stage);
             // Reset delete state when opening new sheep
             setDeleteConfirmOpen(false);
             setDeleteNameInput('');
@@ -58,15 +53,9 @@ export const DebugEditor = ({ selectedSheepId, onClose }) => {
         // Reset to original target data
         setName(target.name);
         setNote(target.note || '');
-        const mat = target.spiritualMaturity || '';
-        const match = mat.match(/^(.+?)(?:\s*\((.+)\))?$/);
-        if (match) {
-            setSLevel(match[1] || '');
-            setSStage(match[2] || '');
-        } else {
-            setSLevel(mat);
-            setSStage('');
-        }
+        const { level, stage } = parseMaturity(target.spiritualMaturity);
+        setSLevel(level);
+        setSStage(stage);
         setIsEditing(false);
         setLocalMsg('');
     };

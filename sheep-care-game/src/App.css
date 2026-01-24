@@ -1,4 +1,15 @@
 #root {
+  /* Clean Ceramic Theme */
+  --glass-bg: rgba(255, 255, 255, 0.92);
+  --glass-border: 1px solid rgba(255, 255, 255, 0.8);
+  --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+  /* Softer, broader shadow */
+  --glass-blur: blur(8px);
+  /* Reduce blur slightly for crispness */
+  --btn-shadow: 0 4px 0;
+  /* Subtler button depth */
+  --btn-shadow-active: 0 3px 0;
+
   max-width: 1280px;
   margin: 0 auto;
   padding: 0;
@@ -24,16 +35,19 @@
   background: #87CEEB;
 }
 
-/* --- Layout Tuning --- */
-.sky {
-  height: 25%;
-  /* Less Sky */
-  width: 100%;
+/* Vignette Overlay */
+.field-container::after {
+  content: '';
   position: absolute;
-  top: 0;
-  background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
-  z-index: 0;
+  inset: 0;
+  background: radial-gradient(circle at center, transparent 30%, rgba(0, 0, 0, 0.15) 100%);
+  pointer-events: none;
+  z-index: 15;
+  /* Above decor, below UI */
 }
+
+/* --- Layout Tuning --- */
+
 
 .grass {
   height: 75%;
@@ -45,54 +59,9 @@
   z-index: 1;
 }
 
-/* Clouds optimization */
-.sky::after {
-  content: '';
-  position: absolute;
-  top: 20%;
-  left: 10%;
-  width: 100px;
-  height: 40px;
-  background: white;
-  border-radius: 50px;
-  opacity: 0.8;
-  box-shadow: 40px 20px 0 -10px white, 80px 0 0 -5px white;
-  animation: drift 60s linear infinite;
-}
 
-@keyframes drift {
-  from {
-    transform: translateX(-200px);
-  }
 
-  to {
-    transform: translateX(100vw);
-  }
-}
 
-/* --- Hill Range (Watercolor Mountains) --- */
-.hill-range {
-  position: absolute;
-  bottom: -4vh;
-  /* Sink slightly to blend base */
-  left: 0;
-  width: 100%;
-  height: 25vh;
-  /* Smaller, deeper background */
-  z-index: 1;
-  pointer-events: none;
-}
-
-.hill {
-  position: absolute;
-  bottom: 0;
-  opacity: 1;
-  /* Solid, opaque colors */
-  /* Remove box-shadow to keep it soft */
-  box-shadow: none;
-  /* Organic/Soft Curve */
-  clip-path: polygon(50% 10%, 80% 60%, 100% 100%, 0% 100%, 20% 60%);
-}
 
 /* Remove hard highlight textures */
 .hill::after {
@@ -101,150 +70,16 @@
 
 /* Layered Mountains - Solid Green Gradients */
 
-/* Left Hill (Pale Green) */
-.h-1 {
-  left: 5%;
-  width: 35%;
-  height: 18vh;
-  /* Radial Gradient for depth, but strictly Green tones */
-  background: radial-gradient(circle at 50% 100%, #AED581 0%, #C5E1A5 100%);
-  z-index: 1;
-}
-
-/* Center Peak (Main - Fresh Green) */
-.h-2 {
-  left: 30%;
-  width: 40%;
-  height: 25vh;
-  /* Peak is top center */
-  clip-path: polygon(50% 0%, 75% 40%, 100% 100%, 0% 100%, 25% 40%);
-  background: radial-gradient(circle at 50% 90%, #7CB342 0%, #AED581 100%);
-  z-index: 2;
-}
-
-/* Right Hill (Deep Green - No Yellow) */
-.h-3 {
-  right: auto;
-  left: 65%;
-  /* Explicitly on screen */
-  width: 30%;
-  height: 20vh;
-  background: radial-gradient(circle at 50% 100%, #558B2F 0%, #7CB342 100%);
-  z-index: 3;
-}
-
-/* --- Mountain Weather States --- */
-
-/* Night: Darker, Blue-shifted */
-.night .hill {
-  transition: filter 1s ease, background 1s ease;
-  filter: brightness(0.5) hue-rotate(20deg);
-}
-
-/* Rain: Dim, Desaturated */
-.rain .hill {
-  filter: grayscale(0.3) brightness(0.8);
-}
-
-/* Storm: Dark, High Contrast, Grey */
-.storm .hill {
-  filter: grayscale(0.6) brightness(0.5) contrast(1.2);
-}
-
-/* Snow: Turn to White/Ice Mountains (Overrides Green) */
-.snow .h-1 {
-  background: radial-gradient(circle at 50% 100%, #B2EBF2 0%, #E0F7FA 100%);
-}
-
-.snow .h-2 {
-  background: radial-gradient(circle at 50% 90%, #80DEEA 0%, #B2DFDB 100%);
-}
-
-.snow .h-3 {
-  background: radial-gradient(circle at 50% 100%, #4DD0E1 0%, #80CBC4 100%);
-}
-
-/* Night + Snow: Cool Blue-Grey */
-.night.snow .hill {
-  filter: brightness(0.7) hue-rotate(10deg);
-  /* specific tint for night snow */
-}
-
-.night.snow .h-1 {
-  background: radial-gradient(circle at 50% 100%, #546E7A 0%, #78909C 100%);
-}
-
-.night.snow .h-2 {
-  background: radial-gradient(circle at 50% 90%, #455A64 0%, #607D8B 100%);
-}
-
-.night.snow .h-3 {
-  background: radial-gradient(circle at 50% 100%, #37474F 0%, #546E7A 100%);
-}
 
 
 
-.cloud-extra {
-  position: absolute;
-  background: white;
-  border-radius: 50px;
-  opacity: 0.8;
-  box-shadow: 40px 20px 0 -10px white, 80px 0 0 -5px white;
-  z-index: 1;
-}
 
-.c1 {
-  top: 15%;
-  left: -150px;
-  width: 80px;
-  height: 30px;
-  animation: drift 50s linear infinite reverse;
-}
 
-.c2 {
-  top: 40%;
-  left: -200px;
-  width: 120px;
-  height: 50px;
-  animation: drift 75s linear infinite;
-  opacity: 0.6;
-}
 
 /* Birds Removed */
 
 /* Weather States (Parent based) */
-.sunny .sky {
-  background: linear-gradient(to bottom, #4facfe 0%, #00f2fe 100%);
-}
 
-.cloudy .sky {
-  background: linear-gradient(to bottom, #757f9a 0%, #d7dde8 100%);
-}
-
-.rain .sky {
-  background: linear-gradient(to bottom, #203a43 0%, #2c5364 100%);
-}
-
-.storm .sky {
-  background: linear-gradient(to bottom, #0f2027 0%, #203a43 100%);
-}
-
-.snow .sky {
-  background: linear-gradient(to bottom, #e6dada 0%, #274046 100%);
-}
-
-/* Night Mode Override */
-.night .sky {
-  background: linear-gradient(to bottom, #0f0c29 0%, #302b63 50%, #24243e 100%);
-}
-
-.night .cloud-extra {
-  opacity: 0.3;
-}
-
-.night .sun {
-  display: none;
-}
 
 /* Grass Weather States */
 .grass {
@@ -278,39 +113,7 @@
 }
 
 
-/* Sun */
-.sun {
-  position: absolute;
-  top: 10%;
-  right: 10%;
-  width: 80px;
-  height: 80px;
-  background: radial-gradient(circle at center, #ffd700, #ff8c00);
-  border-radius: 50%;
-  box-shadow: 0 0 40px #ffd700, 0 0 80px #ff8c00;
-  z-index: 1;
-  animation: sunPulse 4s ease-in-out infinite;
-}
 
-@keyframes sunPulse {
-  0% {
-    transform: scale(1);
-    box-shadow: 0 0 40px #ffd700;
-    opacity: 1;
-  }
-
-  50% {
-    transform: scale(1.1);
-    box-shadow: 0 0 60px #ffd700;
-    opacity: 0.9;
-  }
-
-  100% {
-    transform: scale(1);
-    box-shadow: 0 0 40px #ffd700;
-    opacity: 1;
-  }
-}
 
 /* --- Global Weather Overlay (3D Parallax) --- */
 .weather-overlay {
@@ -402,7 +205,7 @@
   justify-content: center;
   align-items: flex-end;
   /* Align buttons to bottom padding */
-  z-index: 20;
+  z-index: 2000;
   padding: 0 0 20px 0;
   /* Lift up slightly */
   position: absolute;
@@ -433,14 +236,15 @@
   border: none;
   border-radius: 25px;
   cursor: pointer;
-  transition: transform 0.1s;
+  transition: all 0.1s ease;
   font-weight: bold;
-  box-shadow: 0 4px 0 #8b4513;
+  box-shadow: var(--btn-shadow) #8b4513;
+  transform: translateY(0);
 }
 
 .action-btn:active {
-  transform: translateY(4px);
-  box-shadow: none;
+  transform: translateY(3px);
+  box-shadow: var(--btn-shadow-active) #8b4513;
 }
 
 .adopt-btn {
@@ -576,12 +380,27 @@
 
 .simple-editor {
   width: 250px;
-  background: #fff;
-  border: none;
-  border-radius: 16px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: 24px;
+  box-shadow: 0 15px 50px rgba(0, 0, 0, 0.3);
   font-family: inherit;
-  padding: 20px;
+  padding: 24px;
+  animation: modalPop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+@keyframes modalPop {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .simple-editor h3 {
@@ -761,14 +580,15 @@
   top: 10px;
   left: 10px;
   z-index: 100;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 5px 15px;
-  border-radius: 20px;
-  border: 2px solid #ddd;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  padding: 8px 16px;
+  border-radius: 24px;
+  border: var(--glass-border);
   display: flex;
   flex-direction: column;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  backdrop-filter: blur(4px);
+  box-shadow: var(--glass-shadow);
 }
 
 .hud-right {
@@ -781,19 +601,31 @@
 }
 
 .hud-btn {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   font-size: 1.5rem;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  background: white;
-  /* Default */
-  border: 2px solid #ccc;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
   border-radius: 50%;
-  /* Ensure round */
   display: flex;
   justify-content: center;
   align-items: center;
   cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: var(--glass-shadow);
+}
+
+.hud-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 40px rgba(31, 38, 135, 0.25);
+  background: rgba(255, 255, 255, 0.85);
+}
+
+.hud-btn:active {
+  transform: translateY(1px);
+  box-shadow: 0 4px 10px rgba(31, 38, 135, 0.1);
 }
 
 @media (max-width: 480px) {
@@ -825,8 +657,8 @@
   left: 0;
   width: 100vw;
   height: 100vh;
-  background-color: rgba(0, 0, 0, 0.5);
-  backdrop-filter: blur(2px);
+  background-color: rgba(0, 0, 0, 0.25);
+  backdrop-filter: blur(4px);
   z-index: 9999;
   /* Ensure highest z-index */
   display: flex;
@@ -844,11 +676,12 @@
   z-index: 1000;
 
   /* Visuals */
-  background-color: rgba(255, 255, 255, 0.85);
-  backdrop-filter: blur(5px);
-  border-radius: 20px;
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+  background-color: var(--glass-bg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border-radius: 24px;
+  border: var(--glass-border);
+  box-shadow: var(--glass-shadow);
 
   /* Layout: Inline-flex hugs content */
   display: inline-flex;

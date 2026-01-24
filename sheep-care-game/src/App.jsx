@@ -10,6 +10,7 @@ import { SheepList } from './components/SheepList';
 import { SettingsModal } from './components/SettingsModal';
 import { SkinManager } from './components/SkinManager';
 import { UserProfile } from './components/UserProfile';
+import { AdminWeatherControl } from './components/AdminWeatherControl';
 import './App.css';
 
 function App() {
@@ -78,6 +79,7 @@ function App() {
 
       {/* --- Unified Top Left Widget --- */}
       <UserProfile />
+      <AdminWeatherControl />
 
       {/* --- HUD: Top Right System Buttons --- */}
       <div className="hud-right">

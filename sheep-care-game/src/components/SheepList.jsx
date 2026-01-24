@@ -270,7 +270,7 @@ export const SheepList = ({ onSelect, onClose }) => {
                                             }}
                                             title={!isSelectionMode ? "點擊編輯外觀" : ""}
                                         >
-                                            <div style={{ width: '60px', height: '60px', position: 'relative' }}>
+                                            <div style={{ width: '60px', height: '60px', position: 'relative', display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
                                                 {/* Edit Icon Overlay on Hover (optional, but good for UX) */}
                                                 {!isSelectionMode && (
                                                     <div style={{
@@ -302,6 +302,7 @@ export const SheepList = ({ onSelect, onClose }) => {
                                                     isStatic={true}
                                                     scale={0.65}
                                                     direction={1}
+                                                    centered={true}
                                                 />
                                             </div>
                                             <div style={{

@@ -1,14 +1,31 @@
-
 // --- Constants ---
-const BOUNDS = { minX: 5, maxX: 95, minY: 0, maxY: 100 };
-const GRAVEYARD_RADIUS = 25; // Fan shape from Top-Left (x=0, y=100)
+const BOUNDS = { minX: 10, maxX: 90, minY: 1, maxY: 90 };
+const GRAVEYARD_RADIUS = 33; // Fan shape from Top-Left (x=0, y=100)
 
 // Configuration for game balance
+// Configuration for game balance
 const SHEEP_CONFIG = {
-    SPEED: { NORMAL: 2.5, SICK: 0.8, PUSH_BACK: 4.0 },
+    SPEED: { NORMAL: 1.2, SICK: 0.6, PUSH_BACK: 3.0 },
     CHANCE: {
-        STOP_NORMAL: 0.15, STOP_SICK: 0.4,
-        WALK_NORMAL: 0.15, WALK_SICK: 0.05
+        STOP_NORMAL: 0.2, STOP_SICK: 0.4, // Stop more often
+        WALK_NORMAL: 0.08, WALK_SICK: 0.05 // Start walking less often
+    },
+    DECAY: {
+        // Per Tick (500ms)
+        TICK: {
+            HEALTHY: 0.000075, // ~13%/day
+            SICK: 0.000115,    // ~20%/day
+            INJURED: 0.0001,   // ~17%/day
+            PROTECTED: 0.000035 // ~6%/day
+        },
+        // Per Hour (Derived approx for offline calc: TickRate * 2 * 3600)
+        // 0.000075 * 7200 = 0.54
+        HOUR: {
+            HEALTHY: 0.54,
+            SICK: 0.828,
+            INJURED: 0.72,
+            PROTECTED: 0.252
+        }
     }
 };
 
@@ -105,6 +122,15 @@ const MATURITY_MESSAGES = {
 const clamp = (val, min, max) => Math.min(Math.max(val, min), max);
 const getRandomItem = (arr) => arr[Math.floor(Math.random() * arr.length)];
 
+export const parseMaturity = (matString) => {
+    if (!matString) return { level: '', stage: '' };
+    const match = matString.match(/^(.+?)(?:\s*\((.+)\))?$/);
+    if (match) {
+        return { level: match[1], stage: match[2] || '' };
+    }
+    return { level: matString, stage: '' };
+};
+
 export const generateVisuals = () => {
     const colors = ['#ffffff', '#fff5e6', '#f0f8ff', '#fff0f5', '#e6e6fa', '#f5f5f5'];
     const accessories = ['none', 'none', 'none', 'tie_red', 'tie_blue', 'flower', 'scarf_green'];
@@ -122,8 +148,8 @@ export const sanitizeSheep = (s) => {
     let { x, y, angle, visual } = s;
 
     // Fix Coordinates
-    if (typeof x !== 'number' || isNaN(x)) x = Math.random() * 90 + 5;
-    if (typeof y !== 'number' || isNaN(y)) y = Math.random() * 50;
+    if (typeof x !== 'number' || isNaN(x)) x = Math.random() * (BOUNDS.maxX - BOUNDS.minX) + BOUNDS.minX;
+    if (typeof y !== 'number' || isNaN(y)) y = Math.random() * (BOUNDS.maxY - BOUNDS.minY) + BOUNDS.minY;
     if (typeof angle !== 'number' || isNaN(angle)) angle = Math.random() * Math.PI * 2;
 
     // Ensure not spawning in graveyard or buffer zone (Radius + 20)
@@ -140,10 +166,6 @@ export const sanitizeSheep = (s) => {
     return { ...s, x, y, angle, visual: safeVisual };
 };
 
-/**
- * Processes a single game tick for one sheep.
- * Handles movement, wall bouncing, health decay, and random messages.
- */
 /**
  * Centralized logic for determining Status and Type based on Health.
  * Used by Game Loop, Offline Calculation, and Debug Editor.
@@ -169,44 +191,64 @@ export const calculateSheepState = (currentHealth, currentStatus) => {
     return { health: newHealth, status: newStatus, type: newType };
 };
 
-export const calculateTick = (s) => {
+/**
+ * Calculates decay for a sheep over a period of time (offline).
+ */
+export const calculateOfflineDecay = (s, diffHours) => {
+    if (s.status === 'dead') return s;
+
+    let ratePerHour = SHEEP_CONFIG.DECAY.HOUR.HEALTHY;
+
+    // Prayer Protection Check
+    const todayStr = new Date().toDateString();
+    const isProtected = s.lastPrayedDate === todayStr;
+
+    if (s.status === 'sick') ratePerHour = SHEEP_CONFIG.DECAY.HOUR.SICK;
+    else if (isProtected) ratePerHour = SHEEP_CONFIG.DECAY.HOUR.PROTECTED;
+    else if (s.status === 'injured') ratePerHour = SHEEP_CONFIG.DECAY.HOUR.INJURED;
+
+    const decayAmount = diffHours * ratePerHour;
+    let rawHealth = s.status === 'dead' ? 0 : (s.health - decayAmount);
+
+    const { health, status, type } = calculateSheepState(rawHealth, s.status);
+
+    return sanitizeSheep({ ...s, health, status, type });
+};
+
+export const calculateTick = (s, allSheep = []) => {
     // Allow dead sheep to process message logic
     // if (s.status === 'dead') return s;
 
     let { x, y, state, angle, direction, message, messageTimer } = s;
+    const oldX = x;
+    const oldY = y;
 
     // 1. Movement Logic
     if (s.status === 'dead') {
         state = 'idle';
         // Graveyard Logic: Fan shape from Top-Left (x=0, y=100)
-        const dist = Math.sqrt(x * x + (100 - y) * (100 - y));
+        const distSq = x * x + (100 - y) * (100 - y);
+        const graveRadiusSq = GRAVEYARD_RADIUS * GRAVEYARD_RADIUS;
 
-        if (dist > GRAVEYARD_RADIUS) {
+        if (distSq > graveRadiusSq) {
             // Teleport inside
             const r = Math.random() * (GRAVEYARD_RADIUS - 5);
             const theta = Math.random() * (Math.PI / 2); // 0 to 90 degrees
-            // Map to top-left quadrant relative to (0,100)
-            // X = r * sin(theta) (0 to +)
-            // Y = 100 - r * cos(theta) (100 down to 100-r)
             x = r * Math.sin(theta);
             y = 100 - r * Math.cos(theta);
 
             angle = Math.PI / 2; // Face forward/down, static
-        } else {
-            // Already in graveyard? Force static precise lock (don't drift)
-            // Do not update x, y, angle
         }
     } else if (state === 'walking') {
         // Stop Chance
         let stopChance = SHEEP_CONFIG.CHANCE.STOP_NORMAL;
         if (s.status === 'sick') stopChance = SHEEP_CONFIG.CHANCE.STOP_SICK;
 
-        if (Math.random() < stopChance) state = 'idle';
-        else {
-            // Robust initialization (Double check even if sterilized on load)
-            if (typeof y !== 'number' || isNaN(y)) y = Math.random() * 50;
-            if (typeof angle !== 'number' || isNaN(angle)) angle = Math.random() * Math.PI * 2;
-            if (typeof x !== 'number' || isNaN(x)) x = Math.random() * 90 + 5;
+        if (Math.random() < stopChance) {
+            // Stop! Chance to Sleep? (30%)
+            state = (Math.random() < 0.3) ? 'sleep' : 'idle';
+        } else {
+            // Redundant initialization removed - sanitizeSheep handles this
 
             // Speed
             let speed = SHEEP_CONFIG.SPEED.NORMAL;
@@ -216,36 +258,108 @@ export const calculateTick = (s) => {
             angle += (Math.random() - 0.5) * 1.0;
             x += Math.cos(angle) * speed;
             y += Math.sin(angle) * speed;
-
-            // Graveyard Collision Check (Fan Shape) with 20 unit buffer
-            const distToCorner = Math.sqrt(x * x + (100 - y) * (100 - y));
-            if (distToCorner < GRAVEYARD_RADIUS + 20) {
-                // Bounce back (Normal vector is direction from corner to sheep)
-                // Simply reverse for now or push away from corner
-                // We want to go opposite
-                angle = Math.atan2(y - 100, x - 0);
-
-                x += Math.cos(angle) * SHEEP_CONFIG.SPEED.PUSH_BACK;
-                y += Math.sin(angle) * SHEEP_CONFIG.SPEED.PUSH_BACK;
-            }
-
-            // Bounds Check
-            if (x < BOUNDS.minX || x > BOUNDS.maxX) {
-                angle = Math.PI - angle;
-                x = clamp(x, BOUNDS.minX, BOUNDS.maxX);
-            }
-            if (y < BOUNDS.minY || y > BOUNDS.maxY) {
-                angle = -angle;
-                y = clamp(y, BOUNDS.minY, BOUNDS.maxY);
-            }
         }
+    } else if (state === 'sleep') {
+        // Wake Up Chance (5% per tick -> ~2.5s avg sleep duration if tick=500ms? No, 1/0.05 = 20 ticks = 10s)
+        if (Math.random() < 0.02) state = 'idle'; // Sleep longer
     } else {
+        // IDLE State
         // Start Walk Chance
         let walkChance = SHEEP_CONFIG.CHANCE.WALK_NORMAL;
         if (s.status === 'sick') walkChance = SHEEP_CONFIG.CHANCE.WALK_SICK;
 
         if (Math.random() < walkChance) state = 'walking';
     }
+
+    // --- Global Constraints (Apply to ALL live sheep, even idle) ---
+    // Forces sheep out of graveyard and bounds, regardless of state
+    if (s.status !== 'dead') {
+        const SAFE_RADIUS = 58; // 33 + 25
+        const SAFE_RADIUS_SQ = SAFE_RADIUS * SAFE_RADIUS;
+        const distSqToCorner = x * x + (100 - y) * (100 - y);
+
+        if (distSqToCorner < SAFE_RADIUS_SQ) {
+            // Bounce/Push back!
+            const angleFromCorner = Math.atan2(y - 100, x - 0);
+            angle = angleFromCorner; // Face away
+
+            // Strong Push
+            const pushSpeed = SHEEP_CONFIG.SPEED.PUSH_BACK * 1.5;
+            x += Math.cos(angle) * pushSpeed;
+            y += Math.sin(angle) * pushSpeed;
+        }
+
+        // --- SIGN AVOIDANCE ---
+        // Sign is roughly at x=21, y=75
+        const signX = 21;
+        const signY = 75;
+        const distSqToSign = (x - signX) ** 2 + (y - signY) ** 2;
+        const signRadiusSq = 15 * 15; // 225
+
+        if (distSqToSign < signRadiusSq) {
+            const angleFromSign = Math.atan2(y - signY, x - signX);
+            const push = SHEEP_CONFIG.SPEED.PUSH_BACK; // 4.0 speed
+            x += Math.cos(angleFromSign) * push;
+            y += Math.sin(angleFromSign) * push;
+
+            // Wake up if sleeping near sign (so they move away)
+            if (state === 'sleep') state = 'walking';
+        }
+
+        // --- FLOCK SEPARATION ---
+        if (state !== 'sleep' && allSheep && allSheep.length > 0) {
+            // Performance: Only check simple distance
+            const MIN_SEPARATION = 8; // % units. Approx body width.
+            const MIN_SEP_SQ = MIN_SEPARATION * MIN_SEPARATION;
+
+            for (let other of allSheep) {
+                if (other.id === s.id) continue;
+                if (other.status === 'dead') continue; // Don't avoid graves strictly here
+
+                const dx = x - other.x;
+                const dy = y - other.y;
+                const distSq = dx * dx + dy * dy;
+
+                if (distSq < MIN_SEP_SQ && distSq > 0.001) {
+                    const dist = Math.sqrt(distSq); // Sqrt only when collision detected
+                    const pushForce = (MIN_SEPARATION - dist) * 0.5; // Stronger push
+                    const ax = dx / dist;
+                    const ay = dy / dist;
+
+                    x += ax * pushForce;
+                    y += ay * pushForce;
+                }
+            }
+        }
+
+        // Bounds Check (Always Enforce)
+        if (x < BOUNDS.minX || x > BOUNDS.maxX) {
+            angle = Math.PI - angle;
+            x = clamp(x, BOUNDS.minX, BOUNDS.maxX);
+        }
+        if (y < BOUNDS.minY || y > BOUNDS.maxY) {
+            angle = -angle;
+            y = clamp(y, BOUNDS.minY, BOUNDS.maxY);
+        }
+    }
+
+    direction = Math.cos(angle) > 0 ? 1 : -1;
+
+    // Movement Analysis for Animation Direction
+    const dx = x - oldX;
+    const dy = y - oldY;
+
+    // TURN TO FACE MOVEMENT (No Moonwalking)
+    const distMovedSq = dx * dx + dy * dy;
+    if (distMovedSq > 0.0025) { // 0.05 * 0.05
+        // Update angle to face the actual direction of movement
+        angle = Math.atan2(dy, dx);
+    }
+
+    // Always walking forward now
+    const isReversing = false;
+
+    // Update direction based on new angle
     direction = Math.cos(angle) > 0 ? 1 : -1;
 
     // 2. Health Logic
@@ -257,10 +371,10 @@ export const calculateTick = (s) => {
     const todayStr = new Date().toDateString();
     const isProtected = s.lastPrayedDate === todayStr;
 
-    let decayRate = 0.000075; // Default Healthy
-    if (s.status === 'sick') decayRate = 0.000115;
-    else if (isProtected) decayRate = 0.000035; // Protected
-    else if (s.status === 'injured') decayRate = 0.0001;
+    let decayRate = SHEEP_CONFIG.DECAY.TICK.HEALTHY;
+    if (s.status === 'sick') decayRate = SHEEP_CONFIG.DECAY.TICK.SICK;
+    else if (isProtected) decayRate = SHEEP_CONFIG.DECAY.TICK.PROTECTED;
+    else if (s.status === 'injured') decayRate = SHEEP_CONFIG.DECAY.TICK.INJURED;
 
     // Decay
     let rawHealth = s.status === 'dead' ? 0 : (s.health - decayRate);
@@ -285,21 +399,17 @@ export const calculateTick = (s) => {
         else if (Math.random() < 0.4) {
             // Maturity based messaging
             let specificMsg = null;
-            const matString = s.spiritualMaturity || '';
-            const match = matString.match(/^(.+?)(?:\s*\((.+)\))?$/);
-            if (match) {
-                const level = match[1];
-                const stage = match[2]; // No default
-                if (stage && MATURITY_MESSAGES[level] && MATURITY_MESSAGES[level][stage]) {
-                    specificMsg = getRandomItem(MATURITY_MESSAGES[level][stage]);
-                }
-                // If only level is known (old data or simple input), try to pick from any stage or default
-                if (!specificMsg && MATURITY_MESSAGES[level]) {
-                    // Try '學習中' or random stage
-                    const stages = Object.values(MATURITY_MESSAGES[level]);
-                    const randomStage = getRandomItem(stages);
-                    specificMsg = getRandomItem(randomStage);
-                }
+            const { level, stage } = parseMaturity(s.spiritualMaturity);
+
+            if (stage && MATURITY_MESSAGES[level] && MATURITY_MESSAGES[level][stage]) {
+                specificMsg = getRandomItem(MATURITY_MESSAGES[level][stage]);
+            }
+            // If only level is known (old data or simple input), try to pick from any stage or default
+            if (!specificMsg && MATURITY_MESSAGES[level]) {
+                // Try '學習中' or random stage
+                const stages = Object.values(MATURITY_MESSAGES[level]);
+                const randomStage = getRandomItem(stages);
+                specificMsg = getRandomItem(randomStage);
             }
 
             msg = specificMsg || getRandomItem(SHEEP_MESSAGES.happy);
@@ -307,7 +417,7 @@ export const calculateTick = (s) => {
     }
 
     return {
-        ...s, x, y, angle, state, direction,
+        ...s, x, y, angle, state, direction, isReversing,
         health: newHealth, status: newStatus,
         type: newType, careLevel: newCare,
         message: msg, messageTimer: timer
@@ -317,7 +427,6 @@ export const calculateTick = (s) => {
 // Random access
 export const getSheepMessage = (type) => getRandomItem(SHEEP_MESSAGES[type]);
 
-// Stable access (changes every 5 minutes)
 // Stable access (changes every 5 minutes)
 export const getStableSheepMessage = (s, type) => {
     const list = SHEEP_MESSAGES[type];
