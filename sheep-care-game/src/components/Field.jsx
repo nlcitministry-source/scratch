@@ -9,21 +9,22 @@ import { Rock, Sign, GraveyardZone, GrassTuft } from './Decorations';
 // --- SVG Weather Components (Foreground) ---
 // --- SVG Weather Components (Foreground) ---
 const FG_RAIN_CONFIG = {
-    storm: { drift: 8, count: 60, strokeWidth: 1.5, durationMin: 1.0, durationRange: 0.5, lengthMin: 1.5, lengthRange: 1.5 },
-    rain: { drift: 3, count: 80, strokeWidth: 1, durationMin: 1.5, durationRange: 1.0, lengthMin: 0.2, lengthRange: 0.3 }
+    storm: { drift: 8, count: 60, mobileCount: 30, strokeWidth: 1.5, durationMin: 1.0, durationRange: 0.5, lengthMin: 1.5, lengthRange: 1.5 },
+    rain: { drift: 3, count: 80, mobileCount: 40, strokeWidth: 1, durationMin: 1.5, durationRange: 1.0, lengthMin: 0.2, lengthRange: 0.3 }
 };
 
-const ForegroundRain = React.memo(({ isStorm }) => {
+const ForegroundRain = React.memo(({ isStorm, isMobile }) => {
     const cfg = isStorm ? FG_RAIN_CONFIG.storm : FG_RAIN_CONFIG.rain;
     const fallHeight = 120; // %
+    const activeCount = isMobile ? cfg.mobileCount : cfg.count;
 
-    const drops = useMemo(() => [...Array(cfg.count)].map((_, i) => ({
+    const drops = useMemo(() => [...Array(activeCount)].map((_, i) => ({
         id: i,
         startX: Math.random() * (100 + cfg.drift) - 5,
         delay: Math.random() * 2,
         duration: cfg.durationMin + Math.random() * cfg.durationRange,
         length: cfg.lengthMin + Math.random() * cfg.lengthRange
-    })), [cfg]);
+    })), [cfg, activeCount]);
 
     return (
         <g>
@@ -95,19 +96,25 @@ const ForegroundSnow = React.memo(() => {
 export const Field = ({ onSelectSheep }) => {
     const { sheep, prayForSheep, message, weather, settings } = useGame();
 
-    // --- 1. Grave Limit Logic (Mobile vs Desktop) ---
+    // --- 1. Grave Limit & Mobile Logic ---
     const [graveLimit, setGraveLimit] = useState(10);
+    const [isMobile, setIsMobile] = useState(false);
+
     useEffect(() => {
         let timeoutId;
         const handleResize = () => {
             clearTimeout(timeoutId);
             timeoutId = setTimeout(() => {
-                setGraveLimit(window.innerWidth < 768 ? 6 : 10);
-            }, 200); // Debounce 200ms
+                const mobile = window.innerWidth < 768;
+                setGraveLimit(mobile ? 6 : 10);
+                setIsMobile(mobile);
+            }, 200);
         };
 
-        // Initial check without delay
-        setGraveLimit(window.innerWidth < 768 ? 6 : 10);
+        // Initial check
+        const initialMobile = window.innerWidth < 768;
+        setGraveLimit(initialMobile ? 6 : 10);
+        setIsMobile(initialMobile);
 
         window.addEventListener('resize', handleResize);
         return () => {
@@ -284,7 +291,7 @@ export const Field = ({ onSelectSheep }) => {
             style={{ background: 'transparent', position: 'relative', width: '100%', height: '100dvh', overflow: 'hidden' }}
         >
             {/* Dynamic Background SVG - zIndex 0 - Aligned to Top */}
-            <BackgroundSVG isDay={weather?.isDay} weatherType={weather?.type} />
+            <BackgroundSVG isDay={weather?.isDay} weatherType={weather?.type} isMobile={isMobile} />
 
             {/* Grass Ground - Bottom 70% Only - zIndex 1 */}
             <div className="grass" style={{
@@ -438,6 +445,7 @@ export const Field = ({ onSelectSheep }) => {
                             <ForegroundRain
                                 key={`rain-${weather.type}`} // FORCE REMOUNT on switch
                                 isStorm={weather.type === 'storm'}
+                                isMobile={isMobile}
                             />
                         )}
                         {weather.type === 'snow' && <ForegroundSnow />}

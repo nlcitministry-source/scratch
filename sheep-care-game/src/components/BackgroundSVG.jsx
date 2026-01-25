@@ -149,7 +149,7 @@ const Star = ({ x, y, delay, r }) => (
     </motion.g>
 );
 
-export const BackgroundSVG = ({ isDay = true, weatherType = 'sunny' }) => {
+export const BackgroundSVG = ({ isDay = true, weatherType = 'sunny', isMobile = false }) => {
 
     // --- Star Generation (Stable) ---
     // --- Star Generation (Dynamic) ---
@@ -285,8 +285,8 @@ export const BackgroundSVG = ({ isDay = true, weatherType = 'sunny' }) => {
                 ))}
 
                 {/* --- Background Precipitation --- */}
-                {config.precip === 'rain' && <RainLines key="rain-bg" configKey="rain" color="#B0BEC5" />}
-                {config.precip === 'storm' && <RainLines key="storm-bg" configKey="storm" color="#78909C" />}
+                {config.precip === 'rain' && <RainLines key="rain-bg" configKey="rain" color="#B0BEC5" isMobile={isMobile} />}
+                {config.precip === 'storm' && <RainLines key="storm-bg" configKey="storm" color="#78909C" isMobile={isMobile} />}
                 {config.precip === 'snow' && <SnowFlakes count={50} />}
             </svg>
 
